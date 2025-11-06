@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Datepicker, Button } from "flowbite-react";
+import { Button } from "flowbite-react";
+import FloatingDatepicker from "../../../../../components/FloatingDatepicker";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
@@ -87,36 +88,35 @@ export default function PresensiAbsencesPage() {
           <h3 className="text-black font-medium mb-2">Ajukan Absensi</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
             <div>
-              <label className="text-sm text-gray-700">Tanggal</label>
-          {/* Flowbite Datepicker untuk tanggal absen */}
-          <Datepicker
-            className="w-full"
-            value={form.date ? new Date(form.date) : null}
-            onChange={(d) => {
-              const toYMD = (dd: Date) => {
-                const y = dd.getFullYear();
-                const m = String(dd.getMonth() + 1).padStart(2, '0');
-                const day = String(dd.getDate()).padStart(2, '0');
-                return `${y}-${m}-${day}`;
-              };
-              let selected: Date | null = null;
-              if (d instanceof Date) {
-                selected = d;
-              } else if (typeof d === 'string') {
-                const parsed = new Date(d);
-                if (!isNaN(parsed.getTime())) selected = parsed;
-              } else if (d && typeof d === 'object' && 'target' in (d as any)) {
-                const v = (d as any).target?.value;
-                if (typeof v === 'string') {
-                  const parsed = new Date(v);
-                  if (!isNaN(parsed.getTime())) selected = parsed;
-                }
-              }
-              if (selected) {
-                setForm(s => ({ ...s, date: toYMD(selected!) }));
-              }
-            }}
-          />
+              <FloatingDatepicker
+                id="absence_date"
+                label="Tanggal"
+                value={form.date ? new Date(form.date) : null}
+                onChange={(d: unknown) => {
+                  const toYMD = (dd: Date) => {
+                    const y = dd.getFullYear();
+                    const m = String(dd.getMonth() + 1).padStart(2, '0');
+                    const day = String(dd.getDate()).padStart(2, '0');
+                    return `${y}-${m}-${day}`;
+                  };
+                  let selected: Date | null = null;
+                  if (d instanceof Date) {
+                    selected = d;
+                  } else if (typeof d === 'string') {
+                    const parsed = new Date(d);
+                    if (!isNaN(parsed.getTime())) selected = parsed;
+                  } else if (d && typeof d === 'object' && 'target' in (d as Record<string, unknown>)) {
+                    const v = (d as Record<string, any>).target?.value as unknown;
+                    if (typeof v === 'string') {
+                      const parsed = new Date(v);
+                      if (!isNaN(parsed.getTime())) selected = parsed;
+                    }
+                  }
+                  if (selected) {
+                    setForm(s => ({ ...s, date: toYMD(selected!) }));
+                  }
+                }}
+              />
             </div>
             <div className="md:col-span-2 relative">
               <input value={form.reason} onChange={e=>setForm(s=>({ ...s, reason: e.target.value }))} id="absen_reason" placeholder=" "

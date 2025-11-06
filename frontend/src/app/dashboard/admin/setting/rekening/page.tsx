@@ -42,7 +42,16 @@ export default function RekeningPage() {
     try {
       const r = await fetch(`${API_URL}/rekening?q=${encodeURIComponent(q)}`, { headers });
       const d = await r.json().catch(()=>({}));
-      const list = Array.isArray(d.data) ? d.data : [];
+      const arr = Array.isArray(d.data) ? d.data : Array.isArray(d) ? d : [];
+      const list: Rekening[] = arr.map((x: any) => ({
+        id: Number(x.id),
+        kode: x.kode || "",
+        nama: x.nama || x.bank || "",
+        jenis: (x.jenis as any) || "CASH",
+        nomor: x.nomor || x.number || undefined,
+        atas_nama: x.atas_nama || x.name || undefined,
+        saldo: Number(x.saldo || 0),
+      }));
       setItems(list);
     } catch {}
     setLoading(false);
@@ -65,10 +74,12 @@ export default function RekeningPage() {
   const createItem = async () => {
     if (!token) return;
     try {
+      // Backend saat ini menerima { bank, nomor }
+      const payload = { bank: nama, nomor };
       const res = await fetch(`${API_URL}/rekening`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ kode, nama, jenis, nomor, atas_nama: atasNama, saldo: Number(saldo || 0) }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json().catch(()=>({}));
       if (!res.ok) { return Swal.fire({ title: "Gagal", text: data?.error || "Gagal menyimpan", icon: "error" }); }
@@ -87,10 +98,12 @@ export default function RekeningPage() {
   const saveEdit = async (it: any) => {
     if (!token) return;
     try {
+      // Backend saat ini menerima { bank, nomor }
+      const payload = { bank: it._nama || it.nama, nomor: it._nomor || it.nomor };
       const res = await fetch(`${API_URL}/rekening/${it.id}`, {
         method: "PUT",
         headers,
-        body: JSON.stringify({ kode: it._kode, nama: it._nama, jenis: it._jenis, nomor: it._nomor, atas_nama: it._atas_nama, saldo: Number(it._saldo || 0) }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json().catch(()=>({}));
       if (!res.ok) { return Swal.fire({ title: "Gagal", text: data?.error || "Gagal menyimpan", icon: "error" }); }

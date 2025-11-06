@@ -29,14 +29,15 @@ export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> 
   return res.json() as Promise<T>;
 }
 
-export function fmtDecimal(n: number, decimals = 2): string {
-  if (isNaN(n)) return '0';
-  const parts = n.toFixed(decimals).split('.');
+export function fmtDecimal(n: number | string, decimals = 2): string {
+  const num = typeof n === 'number' ? n : Number(n);
+  if (!isFinite(num)) return '0';
+  const parts = num.toFixed(decimals).split('.');
   const intPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
   return parts.length > 1 ? `${intPart},${parts[1]}` : intPart;
 }
 
-export function fmtRupiah(n: number): string {
+export function fmtRupiah(n: number | string): string {
   return `Rp ${fmtDecimal(n, 2)}`;
 }
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Datepicker } from "flowbite-react";
+import FloatingDatepicker from "../../../../components/FloatingDatepicker";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
 
@@ -175,37 +176,34 @@ export default function AssetsPage() {
               <input value={description} onChange={e=>setDescription(e.target.value)} className="px-3 py-3 rounded-lg border border-gray-300 text-sm text-black bg-white w-full" />
               <label className="absolute left-3 -top-2.5 bg-white px-1 text-xs text-gray-600">Deskripsi</label>
             </div>
-            <div className="relative">
-              {/* Flowbite Datepicker untuk tanggal pembelian */}
-              <Datepicker
-                className="w-full"
-                value={purchase_date ? new Date(purchase_date) : null}
-                onChange={(val: unknown) => {
-                  const toYMD = (d: Date) => {
-                    const y = d.getFullYear();
-                    const m = String(d.getMonth() + 1).padStart(2, '0');
-                    const day = String(d.getDate()).padStart(2, '0');
-                    return `${y}-${m}-${day}`;
-                  };
-                  if (!val) { setPurchaseDate(""); return; }
-                  if (val instanceof Date && !isNaN(val.getTime())) {
-                    setPurchaseDate(toYMD(val));
-                    return;
-                  }
-                  if (typeof val === "string") {
-                    const d = new Date(val);
-                    if (!isNaN(d.getTime())) { setPurchaseDate(toYMD(d)); }
-                    return;
-                  }
-                  if (typeof val === "number") {
-                    const d = new Date(val);
-                    if (!isNaN(d.getTime())) { setPurchaseDate(toYMD(d)); }
-                    return;
-                  }
-                }}
-              />
-              <label className="absolute left-3 -top-2.5 bg-white px-1 text-xs text-gray-600">Tanggal Beli</label>
-            </div>
+            <FloatingDatepicker
+              id="purchase_date"
+              label="Tanggal Beli"
+              value={purchase_date ? new Date(purchase_date) : null}
+              onChange={(val: unknown) => {
+                const toYMD = (d: Date) => {
+                  const y = d.getFullYear();
+                  const m = String(d.getMonth() + 1).padStart(2, '0');
+                  const day = String(d.getDate()).padStart(2, '0');
+                  return `${y}-${m}-${day}`;
+                };
+                if (!val) { setPurchaseDate(""); return; }
+                if (val instanceof Date && !isNaN(val.getTime())) {
+                  setPurchaseDate(toYMD(val));
+                  return;
+                }
+                if (typeof val === "string") {
+                  const d = new Date(val);
+                  if (!isNaN(d.getTime())) { setPurchaseDate(toYMD(d)); }
+                  return;
+                }
+                if (typeof val === "number") {
+                  const d = new Date(val);
+                  if (!isNaN(d.getTime())) { setPurchaseDate(toYMD(d)); }
+                  return;
+                }
+              }}
+            />
             <div className="relative">
               <input type="number" step="0.01" value={value} onChange={e=>setValue(e.target.value)} className="px-3 py-3 rounded-lg border border-gray-300 text-sm text-black bg-white w-full" />
               <label className="absolute left-3 -top-2.5 bg-white px-1 text-xs text-gray-600">Nilai</label>

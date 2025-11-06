@@ -18,23 +18,40 @@ export default function HasPermissionsPage() {
 
   const loadBase = async () => {
     setLoading(true);
-    const [rRes, pRes] = await Promise.all([
-      fetchJson<PaginatedResponse<Role[]>>(`${API_URL}/roles`),
-      fetchJson<PaginatedResponse<Perm[]>>(`${API_URL}/permissions`),
-    ]);
-    setRoles(Array.isArray(rRes.data) ? rRes.data : []);
-    setPerms(Array.isArray(pRes.data) ? pRes.data : []);
-    setLoading(false);
-    const firstRole = (Array.isArray(rRes.data) ? rRes.data : [])[0]?.id || null;
-    setSelectedRole(firstRole);
+    try {
+      const [rRes, pRes] = await Promise.all([
+        fetchJson<PaginatedResponse<Role[]>>(`/roles`),
+        fetchJson<PaginatedResponse<Perm[]>>(`/permissions`),
+      ]);
+      const rData = Array.isArray(rRes?.data) ? rRes.data : [];
+      const pData = Array.isArray(pRes?.data) ? pRes.data : [];
+      setRoles(rData);
+      setPerms(pData);
+      const firstRole = rData[0]?.id || null;
+      setSelectedRole(firstRole);
+    } catch (e: any) {
+      Swal.fire({ title: 'Gagal', text: e?.message || 'Tidak dapat memuat roles/permissions', icon: 'error' });
+      setRoles([]);
+      setPerms([]);
+      setSelectedRole(null);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const loadRolePerms = async (roleId: number) => {
-    const res = await fetchJson<{ data: Perm[] }>(`${API_URL}/permissions/by-role/${roleId}`);
-    const ids = new Set<number>((res.data || []).map((p:Perm)=>p.id));
-    const next: Record<number, boolean> = {};
-    perms.forEach(p => { next[p.id] = ids.has(p.id); });
-    setChecked(next);
+    try {
+      const res = await fetchJson<{ data: Perm[] }>(`/permissions/by-role/${roleId}`);
+      const ids = new Set<number>((res.data || []).map((p:Perm)=>p.id));
+      const next: Record<number, boolean> = {};
+      perms.forEach(p => { next[p.id] = ids.has(p.id); });
+      setChecked(next);
+    } catch (e: any) {
+      Swal.fire({ title: 'Gagal', text: e?.message || 'Tidak dapat memuat permissions untuk role', icon: 'error' });
+      const next: Record<number, boolean> = {};
+      perms.forEach(p => { next[p.id] = false; });
+      setChecked(next);
+    }
   };
 
   useEffect(() => { loadBase(); }, []);

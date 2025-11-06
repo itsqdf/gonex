@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Datepicker } from "flowbite-react";
+import FloatingDatepicker from "../../../../components/FloatingDatepicker";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
 
@@ -184,37 +185,34 @@ export default function MaintenancePage() {
               <input value={issue_description} onChange={e=>setIssueDescription(e.target.value)} className="px-3 py-3 rounded-lg border border-gray-300 text-sm text-black bg-white w-full" />
               <label className="absolute left-3 -top-2.5 bg-white px-1 text-xs text-gray-600">Issue</label>
             </div>
-            <div className="relative">
-              {/* Flowbite Datepicker untuk tanggal maintenance */}
-              <Datepicker
-                className="w-full"
-                value={maintenance_date ? new Date(maintenance_date) : null}
-                onChange={(val: unknown) => {
-                  const toYMD = (d: Date) => {
-                    const y = d.getFullYear();
-                    const m = String(d.getMonth() + 1).padStart(2, '0');
-                    const day = String(d.getDate()).padStart(2, '0');
-                    return `${y}-${m}-${day}`;
-                  };
-                  if (!val) { setMaintenanceDate(""); return; }
-                  if (val instanceof Date && !isNaN(val.getTime())) {
-                    setMaintenanceDate(toYMD(val));
-                    return;
-                  }
-                  if (typeof val === "string") {
-                    const d = new Date(val);
-                    if (!isNaN(d.getTime())) { setMaintenanceDate(toYMD(d)); }
-                    return;
-                  }
-                  if (typeof val === "number") {
-                    const d = new Date(val);
-                    if (!isNaN(d.getTime())) { setMaintenanceDate(toYMD(d)); }
-                    return;
-                  }
-                }}
-              />
-              <label className="absolute left-3 -top-2.5 bg-white px-1 text-xs text-gray-600">Tanggal</label>
-            </div>
+            <FloatingDatepicker
+              id="maintenance_date"
+              label="Tanggal"
+              value={maintenance_date ? new Date(maintenance_date) : null}
+              onChange={(val: unknown) => {
+                const toYMD = (d: Date) => {
+                  const y = d.getFullYear();
+                  const m = String(d.getMonth() + 1).padStart(2, '0');
+                  const day = String(d.getDate()).padStart(2, '0');
+                  return `${y}-${m}-${day}`;
+                };
+                if (!val) { setMaintenanceDate(""); return; }
+                if (val instanceof Date && !isNaN(val.getTime())) {
+                  setMaintenanceDate(toYMD(val));
+                  return;
+                }
+                if (typeof val === "string") {
+                  const d = new Date(val);
+                  if (!isNaN(d.getTime())) { setMaintenanceDate(toYMD(d)); }
+                  return;
+                }
+                if (typeof val === "number") {
+                  const d = new Date(val);
+                  if (!isNaN(d.getTime())) { setMaintenanceDate(toYMD(d)); }
+                  return;
+                }
+              }}
+            />
             <div className="relative">
               <input type="number" step="0.01" value={cost} onChange={e=>setCost(e.target.value)} className="px-3 py-3 rounded-lg border border-gray-300 text-sm text-black bg-white w-full" />
               <label className="absolute left-3 -top-2.5 bg-white px-1 text-xs text-gray-600">Biaya</label>

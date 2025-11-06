@@ -5,6 +5,7 @@ import (
     "net/http"
     "net/http/httputil"
     "net/url"
+    "strings"
 
     "github.com/gorilla/mux"
 )
@@ -34,8 +35,40 @@ func proxyTo(target string) http.Handler {
     if err != nil {
         panic(err)
     }
-	p := httputil.NewSingleHostReverseProxy(u)
-	return p
+    p := httputil.NewSingleHostReverseProxy(u)
+    // Strip upstream CORS headers so gateway emits the only CORS headers
+    p.ModifyResponse = func(resp *http.Response) error {
+        resp.Header.Del("Access-Control-Allow-Origin")
+        resp.Header.Del("Access-Control-Allow-Methods")
+        resp.Header.Del("Access-Control-Allow-Headers")
+        resp.Header.Del("Access-Control-Allow-Credentials")
+        resp.Header.Del("Vary")
+        return nil
+    }
+    return p
+}
+
+// proxy with path rewrite: replace first occurrence of prefix with newPrefix
+func proxyRewrite(target string, oldPrefix string, newPrefix string) http.Handler {
+    u, err := url.Parse(target)
+    if err != nil { panic(err) }
+    p := httputil.NewSingleHostReverseProxy(u)
+    // Strip upstream CORS headers so gateway emits the only CORS headers
+    p.ModifyResponse = func(resp *http.Response) error {
+        resp.Header.Del("Access-Control-Allow-Origin")
+        resp.Header.Del("Access-Control-Allow-Methods")
+        resp.Header.Del("Access-Control-Allow-Headers")
+        resp.Header.Del("Access-Control-Allow-Credentials")
+        resp.Header.Del("Vary")
+        return nil
+    }
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        // only rewrite if path starts with oldPrefix
+        if strings.HasPrefix(r.URL.Path, oldPrefix) {
+            r.URL.Path = strings.Replace(r.URL.Path, oldPrefix, newPrefix, 1)
+        }
+        p.ServeHTTP(w, r)
+    })
 }
 
 func main() {
@@ -52,6 +85,7 @@ func main() {
     r.PathPrefix("/roles").Handler(proxyTo("http://auth-user-service:3000")).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions)
     r.PathPrefix("/roles-user").Handler(proxyTo("http://auth-user-service:3000")).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions)
     r.PathPrefix("/has-permissions").Handler(proxyTo("http://auth-user-service:3000")).Methods(http.MethodGet, http.MethodOptions)
+    r.PathPrefix("/permissions").Handler(proxyTo("http://auth-user-service:3000")).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions)
     // Allow GET for /auth endpoints like /auth/me and /auth/permissions
     r.PathPrefix("/auth").Handler(proxyTo("http://auth-user-service:3000")).Methods(http.MethodGet, http.MethodPost, http.MethodOptions)
 
@@ -67,19 +101,29 @@ func main() {
 	r.PathPrefix("/posisi").Handler(proxyTo("http://produk-service:3000")).Methods(http.MethodGet)
 	r.PathPrefix("/rak").Handler(proxyTo("http://produk-service:3000")).Methods(http.MethodGet)
 	r.PathPrefix("/recommendations").Handler(proxyTo("http://produk-service:3000")).Methods(http.MethodGet)
-	r.PathPrefix("/maintenance").Handler(proxyTo("http://produk-service:3000")).Methods(http.MethodGet)
-	r.PathPrefix("/assets").Handler(proxyTo("http://produk-service:3000")).Methods(http.MethodGet)
-	r.PathPrefix("/category-asset").Handler(proxyTo("http://produk-service:3000")).Methods(http.MethodGet)
+    r.PathPrefix("/maintenance").Handler(proxyTo("http://produk-service:3000")).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete)
+    r.PathPrefix("/assets").Handler(proxyTo("http://produk-service:3000")).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete)
+    r.PathPrefix("/category-asset").Handler(proxyTo("http://produk-service:3000")).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete)
 	r.PathPrefix("/category-produk").Handler(proxyTo("http://produk-service:3000")).Methods(http.MethodGet)
 	r.PathPrefix("/pembelian").Handler(proxyTo("http://produk-service:3000")).Methods(http.MethodGet)
 
-	// Keuangan service
+    // Frontend alt paths -> Produk service with rewrites
+    r.PathPrefix("/products").Handler(proxyRewrite("http://produk-service:3000", "/products", "/produk")).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete)
+    r.PathPrefix("/warehouses").Handler(proxyRewrite("http://produk-service:3000", "/warehouses", "/gudang")).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete)
+    r.PathPrefix("/mutasi-barang").Handler(proxyRewrite("http://produk-service:3000", "/mutasi-barang", "/mutasi")).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete)
+    r.PathPrefix("/category-products").Handler(proxyRewrite("http://produk-service:3000", "/category-products", "/category-produk")).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete)
+    r.PathPrefix("/category-assets").Handler(proxyRewrite("http://produk-service:3000", "/category-assets", "/category-asset")).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete)
+
+    // Keuangan service
 	r.PathPrefix("/payment").Handler(proxyTo("http://keuangan-service:3000")).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete)
-	r.PathPrefix("/kas").Handler(proxyTo("http://keuangan-service:3000")).Methods(http.MethodGet)
-	r.PathPrefix("/arus").Handler(proxyTo("http://keuangan-service:3000")).Methods(http.MethodGet)
-	r.PathPrefix("/keluar").Handler(proxyTo("http://keuangan-service:3000")).Methods(http.MethodGet)
-	r.PathPrefix("/masuk").Handler(proxyTo("http://keuangan-service:3000")).Methods(http.MethodGet)
-	r.PathPrefix("/rekening").Handler(proxyTo("http://keuangan-service:3000")).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete)
+	r.PathPrefix("/kas").Handler(proxyTo("http://keuangan-service:3000")).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete)
+    r.PathPrefix("/arus").Handler(proxyTo("http://keuangan-service:3000")).Methods(http.MethodGet)
+    r.PathPrefix("/keluar").Handler(proxyTo("http://keuangan-service:3000")).Methods(http.MethodGet)
+    r.PathPrefix("/masuk").Handler(proxyTo("http://keuangan-service:3000")).Methods(http.MethodGet)
+    r.PathPrefix("/rekening").Handler(proxyTo("http://keuangan-service:3000")).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete)
+
+    // Frontend alt path for payments -> keuangan-service
+    r.PathPrefix("/payments").Handler(proxyRewrite("http://keuangan-service:3000", "/payments", "/payment")).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete)
 
 	// Client service
 	r.PathPrefix("/presensi").Handler(proxyTo("http://client-service:3000")).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete)

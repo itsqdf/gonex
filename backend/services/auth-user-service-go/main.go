@@ -6,6 +6,7 @@ import (
     "database/sql"
     "encoding/base64"
     "encoding/json"
+    "io"
     "errors"
     "log"
     "net/http"
@@ -23,11 +24,27 @@ type User struct {
     Password  string    `json:"password,omitempty"`
     Role      string    `json:"role"`
     CreatedAt time.Time `json:"created_at"`
+    JabatanID sql.NullInt64 `json:"jabatan_id"`
+    Active    bool      `json:"active"`
 }
 
 type Role struct {
     ID   int    `json:"id"`
     Name string `json:"name"`
+}
+
+type Permission struct {
+    ID          int    `json:"id"`
+    Code        string `json:"code"`
+    Name        string `json:"name"`
+    Description string `json:"description"`
+}
+
+type RoleAssignment struct {
+    ID     int    `json:"id"`
+    UserID int    `json:"user_id"`
+    RoleID int    `json:"role_id"`
+    Role   string `json:"role"`
 }
 
 var db *sql.DB
@@ -70,6 +87,25 @@ func waitForDB() {
                 role TEXT NOT NULL,
                 created_at TIMESTAMP NOT NULL DEFAULT NOW()
             );
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS jabatan_id INTEGER;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE;
+            CREATE TABLE IF NOT EXISTS user_roles (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+                UNIQUE(user_id, role_id)
+            );
+            CREATE TABLE IF NOT EXISTS permissions (
+                id SERIAL PRIMARY KEY,
+                code TEXT UNIQUE NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT
+            );
+            CREATE TABLE IF NOT EXISTS role_permissions (
+                role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+                permission_id INTEGER NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
+                PRIMARY KEY (role_id, permission_id)
+            );
             INSERT INTO roles(name) VALUES ('admin') ON CONFLICT DO NOTHING;
             INSERT INTO roles(name) VALUES ('user') ON CONFLICT DO NOTHING;
             INSERT INTO roles(name) VALUES ('superadmin') ON CONFLICT DO NOTHING;
@@ -81,10 +117,96 @@ func waitForDB() {
             time.Sleep(1 * time.Second)
             continue
         }
+        seedPermissions()
         dbReady = true
         log.Println("db ready")
         return
     }
+}
+
+func seedPermissions() {
+    menuCodes := []string{"menu_master_data","menu_hak_akses","menu_kas","menu_produk","menu_setting","menu_asset_perusahaan","menu_ruangan"}
+    op := []string{"view","create","edit","detail","reset","print","delete"}
+    prefixes := []string{"produk_","kas_masuk_","kas_keluar_","kas_flow_","rekening_","category_asset_","category_product_","assets_","maintenance_","warehouses_","racks_","rack_positions_","mutasi_"}
+    for _, c := range menuCodes {
+        _, _ = db.Exec("INSERT INTO permissions(code,name,description) VALUES($1,$2,$3) ON CONFLICT(code) DO NOTHING", c, c, "Menu permission")
+    }
+    for _, o := range op {
+        _, _ = db.Exec("INSERT INTO permissions(code,name,description) VALUES($1,$2,$3) ON CONFLICT(code) DO NOTHING", o, strings.Title(o), "Generic operation")
+    }
+    for _, p := range prefixes {
+        for _, o := range op {
+            code := p + o
+            name := strings.Title(strings.ReplaceAll(p, "_", " ")) + " " + strings.Title(o)
+            _, _ = db.Exec("INSERT INTO permissions(code,name,description) VALUES($1,$2,$3) ON CONFLICT(code) DO NOTHING", code, name, "Scoped operation")
+        }
+    }
+    var superID int
+    _ = db.QueryRow("SELECT id FROM roles WHERE name='superadmin'").Scan(&superID)
+    if superID != 0 {
+        rows, err := db.Query("SELECT id FROM permissions")
+        if err == nil {
+            defer rows.Close()
+            for rows.Next() {
+                var pid int
+                if err := rows.Scan(&pid); err == nil {
+                    _, _ = db.Exec("INSERT INTO role_permissions(role_id, permission_id) VALUES($1,$2) ON CONFLICT DO NOTHING", superID, pid)
+                }
+            }
+        }
+    }
+}
+
+func listPermissions(w http.ResponseWriter, r *http.Request) {
+    if !dbReady { writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error":"db_unavailable"}); return }
+    rows, err := db.Query("SELECT id, code, name, COALESCE(description,'') FROM permissions ORDER BY code")
+    if err != nil { writeJSON(w, 500, map[string]string{"error":err.Error()}); return }
+    defer rows.Close()
+    var out []Permission
+    for rows.Next() {
+        var p Permission
+        if err := rows.Scan(&p.ID, &p.Code, &p.Name, &p.Description); err != nil { writeJSON(w, 500, map[string]string{"error":err.Error()}); return }
+        out = append(out, p)
+    }
+    writeJSON(w, 200, map[string]interface{}{"data": out})
+}
+
+func permissionsByRole(w http.ResponseWriter, r *http.Request) {
+    if !dbReady { writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error":"db_unavailable"}); return }
+    roleID, err := parseIDFromPath(r.URL.Path, "/permissions/by-role/")
+    if err != nil { writeJSON(w, 400, map[string]string{"error":"invalid role id"}); return }
+    rows, err := db.Query(`
+        SELECT p.id, p.code, p.name, COALESCE(p.description,'')
+        FROM role_permissions rp JOIN permissions p ON rp.permission_id = p.id
+        WHERE rp.role_id = $1 ORDER BY p.code
+    `, roleID)
+    if err != nil { writeJSON(w, 500, map[string]string{"error":err.Error()}); return }
+    defer rows.Close()
+    var out []Permission
+    for rows.Next() {
+        var p Permission
+        if err := rows.Scan(&p.ID, &p.Code, &p.Name, &p.Description); err != nil { writeJSON(w, 500, map[string]string{"error":err.Error()}); return }
+        out = append(out, p)
+    }
+    writeJSON(w, 200, map[string]interface{}{"data": out})
+}
+
+func assignPermissions(w http.ResponseWriter, r *http.Request) {
+    if !dbReady { writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error":"db_unavailable"}); return }
+    roleID, err := parseIDFromPath(r.URL.Path, "/permissions/assign/")
+    if err != nil { writeJSON(w, 400, map[string]string{"error":"invalid role id"}); return }
+    var in struct { PermIDs []int `json:"perm_ids"` }
+    if err := json.NewDecoder(r.Body).Decode(&in); err != nil { writeJSON(w, 400, map[string]string{"error":"invalid json"}); return }
+    tx, err := db.Begin()
+    if err != nil { writeJSON(w, 500, map[string]string{"error":err.Error()}); return }
+    _, err = tx.Exec("DELETE FROM role_permissions WHERE role_id=$1", roleID)
+    if err != nil { _ = tx.Rollback(); writeJSON(w, 500, map[string]string{"error":err.Error()}); return }
+    for _, pid := range in.PermIDs {
+        _, err = tx.Exec("INSERT INTO role_permissions(role_id, permission_id) VALUES($1,$2) ON CONFLICT DO NOTHING", roleID, pid)
+        if err != nil { _ = tx.Rollback(); writeJSON(w, 500, map[string]string{"error":err.Error()}); return }
+    }
+    if err := tx.Commit(); err != nil { writeJSON(w, 500, map[string]string{"error":err.Error()}); return }
+    writeJSON(w, 200, map[string]string{"status":"assigned"})
 }
 
 func writeJSON(w http.ResponseWriter, code int, v interface{}) {
@@ -123,25 +245,33 @@ func listUsers(w http.ResponseWriter, r *http.Request) {
     var rows *sql.Rows
     var err error
     if q != "" {
-        rows, err = db.Query("SELECT id, username, role, created_at FROM users WHERE username ILIKE '%' || $1 || '%' ORDER BY id LIMIT $2 OFFSET $3", q, limit, offset)
+        rows, err = db.Query("SELECT id, username, role, created_at, jabatan_id, active FROM users WHERE username ILIKE '%' || $1 || '%' ORDER BY id LIMIT $2 OFFSET $3", q, limit, offset)
     } else {
-        rows, err = db.Query("SELECT id, username, role, created_at FROM users ORDER BY id LIMIT $1 OFFSET $2", limit, offset)
+        rows, err = db.Query("SELECT id, username, role, created_at, jabatan_id, active FROM users ORDER BY id LIMIT $1 OFFSET $2", limit, offset)
     }
     if err != nil { writeJSON(w, 500, map[string]string{"error":err.Error()}); return }
     defer rows.Close()
+    // Fetch jabatan map from setting-service
+    jabMap, _ := fetchJabatanMap()
     var out []map[string]interface{}
     for rows.Next() {
         var u User
-        if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.CreatedAt); err != nil { writeJSON(w, 500, map[string]string{"error":err.Error()}); return }
+        if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.CreatedAt, &u.JabatanID, &u.Active); err != nil { writeJSON(w, 500, map[string]string{"error":err.Error()}); return }
         email := u.Username
         nama := email
         if i := strings.Index(email, "@"); i > 0 { nama = email[:i] }
+        var jabatanName string
+        if u.JabatanID.Valid {
+            if v, ok := jabMap[int(u.JabatanID.Int64)]; ok { jabatanName = v } else { jabatanName = "" }
+        } else {
+            jabatanName = ""
+        }
         out = append(out, map[string]interface{}{
             "id": u.ID,
             "nama": nama,
             "email": email,
-            "status": "aktif",
-            "jabatan": "",
+            "status": func() string { if u.Active { return "Aktif" } ; return "Tidak Aktif" }(),
+            "jabatan": jabatanName,
         })
     }
     pages := (total + limit - 1) / limit
@@ -150,12 +280,36 @@ func listUsers(w http.ResponseWriter, r *http.Request) {
 
 func createUser(w http.ResponseWriter, r *http.Request) {
     if !dbReady { writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error":"db_unavailable"}); return }
+    type UserInput struct {
+        Username  string `json:"username"`
+        Email     string `json:"email"`
+        Password  string `json:"password"`
+        Role      string `json:"role"`
+        JabatanID *int   `json:"jabatan_id"`
+        Active    *bool  `json:"active"`
+    }
+    var in UserInput
+    if err := json.NewDecoder(r.Body).Decode(&in); err != nil { writeJSON(w, 400, map[string]string{"error":"invalid json"}); return }
+    // Use email as username if provided
+    username := strings.TrimSpace(in.Email)
+    if username == "" { username = strings.TrimSpace(in.Username) }
+    password := strings.TrimSpace(in.Password)
+    role := strings.TrimSpace(in.Role)
+    if username == "" || password == "" || role == "" { writeJSON(w, 400, map[string]string{"error":"username/email, password, and role required"}); return }
+    // Cek unik email/username
+    var existingID int
+    if err := db.QueryRow("SELECT id FROM users WHERE username=$1", username).Scan(&existingID); err == nil {
+        writeJSON(w, 400, map[string]string{"error":"Email sudah digunakan"}); return
+    }
+    active := true
+    if in.Active != nil { active = *in.Active }
     var u User
-    if err := json.NewDecoder(r.Body).Decode(&u); err != nil { writeJSON(w, 400, map[string]string{"error":"invalid json"}); return }
-    if u.Username == "" || u.Password == "" || u.Role == "" { writeJSON(w, 400, map[string]string{"error":"username, password, role required"}); return }
-    err := db.QueryRow("INSERT INTO users(username, password, role) VALUES($1,$2,$3) RETURNING id, created_at", u.Username, u.Password, u.Role).Scan(&u.ID, &u.CreatedAt)
+    err := db.QueryRow("INSERT INTO users(username, password, role, jabatan_id, active) VALUES($1,$2,$3,$4,$5) RETURNING id, created_at", username, password, role, in.JabatanID, active).Scan(&u.ID, &u.CreatedAt)
     if err != nil { writeJSON(w, 500, map[string]string{"error":err.Error()}); return }
+    u.Username = username
+    u.Role = role
     u.Password = ""
+    u.Active = active
     writeJSON(w, 201, u)
 }
 
@@ -163,10 +317,27 @@ func updateUser(w http.ResponseWriter, r *http.Request) {
     if !dbReady { writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error":"db_unavailable"}); return }
     idStr, err := parseIDFromPath(r.URL.Path, "/users/")
     if err != nil { writeJSON(w, 400, map[string]string{"error":"invalid id"}); return }
-    var u User
-    if err := json.NewDecoder(r.Body).Decode(&u); err != nil { writeJSON(w, 400, map[string]string{"error":"invalid json"}); return }
-    // allow updating password or role or username
-    _, err = db.Exec("UPDATE users SET username = COALESCE(NULLIF($1,''), username), password = COALESCE(NULLIF($2,''), password), role = COALESCE(NULLIF($3,''), role) WHERE id=$4", u.Username, u.Password, u.Role, idStr)
+    type UserInput struct {
+        Username  string `json:"username"`
+        Email     string `json:"email"`
+        Password  string `json:"password"`
+        Role      string `json:"role"`
+        JabatanID *int   `json:"jabatan_id"`
+        Active    *bool  `json:"active"`
+    }
+    var in UserInput
+    err = json.NewDecoder(r.Body).Decode(&in); if err != nil { writeJSON(w, 400, map[string]string{"error":"invalid json"}); return }
+    username := strings.TrimSpace(in.Email)
+    if username == "" { username = strings.TrimSpace(in.Username) }
+    // Jika mengubah email/username, pastikan unik
+    if username != "" {
+        var existingID int
+        if err := db.QueryRow("SELECT id FROM users WHERE username=$1 AND id<>$2", username, idStr).Scan(&existingID); err == nil {
+            writeJSON(w, 400, map[string]string{"error":"Email sudah digunakan"}); return
+        }
+    }
+    // allow updating password, role, username, jabatan_id
+    _, err = db.Exec("UPDATE users SET username = COALESCE(NULLIF($1,''), username), password = COALESCE(NULLIF($2,''), password), role = COALESCE(NULLIF($3,''), role), jabatan_id = COALESCE($4, jabatan_id), active = COALESCE($5, active) WHERE id=$6", username, in.Password, in.Role, in.JabatanID, in.Active, idStr)
     if err != nil { writeJSON(w, 500, map[string]string{"error":err.Error()}); return }
     writeJSON(w, 200, map[string]string{"status":"updated"})
 }
@@ -185,12 +356,19 @@ func getUser(w http.ResponseWriter, r *http.Request) {
     id, err := parseIDFromPath(r.URL.Path, "/users/")
     if err != nil { writeJSON(w, 400, map[string]string{"error":"invalid id"}); return }
     var u User
-    err = db.QueryRow("SELECT id, username, role, created_at FROM users WHERE id=$1", id).Scan(&u.ID, &u.Username, &u.Role, &u.CreatedAt)
+    err = db.QueryRow("SELECT id, username, role, created_at, jabatan_id, active FROM users WHERE id=$1", id).Scan(&u.ID, &u.Username, &u.Role, &u.CreatedAt, &u.JabatanID, &u.Active)
     if err != nil { writeJSON(w, 404, map[string]string{"error":"user_not_found"}); return }
     email := u.Username
     nama := email
     if i := strings.Index(email, "@"); i > 0 { nama = email[:i] }
-    writeJSON(w, 200, map[string]interface{}{"user": map[string]interface{}{"id": u.ID, "nama": nama, "email": email, "status": "aktif", "jabatan": ""}})
+    // map jabatan name
+    jabatanName := ""
+    if u.JabatanID.Valid {
+        if jabMap, err := fetchJabatanMap(); err == nil {
+            if v, ok := jabMap[int(u.JabatanID.Int64)]; ok { jabatanName = v }
+        }
+    }
+    writeJSON(w, 200, map[string]interface{}{"user": map[string]interface{}{"id": u.ID, "nama": nama, "email": email, "status": func() string { if u.Active { return "Aktif" } ; return "Tidak Aktif" }(), "jabatan": jabatanName, "role": u.Role}})
 }
 
 func resetPassword(w http.ResponseWriter, r *http.Request) {
@@ -209,7 +387,7 @@ func listRoles(w http.ResponseWriter, r *http.Request) {
     if err != nil { writeJSON(w, 500, map[string]string{"error":err.Error()}); return }
     defer rows.Close()
     var out []Role
-    for rows.Next() { var r Role; if err := rows.Scan(&r.ID, &r.Name); err != nil { writeJSON(w, 500, map[string]string{"error":err.Error()}); return }; out = append(out, r) }
+    for rows.Next() { var r Role; if scanErr := rows.Scan(&r.ID, &r.Name); scanErr != nil { writeJSON(w, 500, map[string]string{"error":scanErr.Error()}); return }; out = append(out, r) }
     writeJSON(w, 200, map[string]interface{}{"data": out})
 }
 
@@ -228,7 +406,7 @@ func updateRole(w http.ResponseWriter, r *http.Request) {
     idStr, err := parseIDFromPath(r.URL.Path, "/roles/")
     if err != nil { writeJSON(w, 400, map[string]string{"error":"invalid id"}); return }
     var rl Role
-    if err := json.NewDecoder(r.Body).Decode(&rl); err != nil { writeJSON(w, 400, map[string]string{"error":"invalid json"}); return }
+    err = json.NewDecoder(r.Body).Decode(&rl); if err != nil { writeJSON(w, 400, map[string]string{"error":"invalid json"}); return }
     _, err = db.Exec("UPDATE roles SET name = COALESCE(NULLIF($1,''), name) WHERE id=$2", rl.Name, idStr)
     if err != nil { writeJSON(w, 500, map[string]string{"error":err.Error()}); return }
     writeJSON(w, 200, map[string]string{"status":"updated"})
@@ -239,11 +417,11 @@ func deleteRole(w http.ResponseWriter, r *http.Request) {
     idStr, err := parseIDFromPath(r.URL.Path, "/roles/")
     if err != nil { writeJSON(w, 400, map[string]string{"error":"invalid id"}); return }
     var roleName string
-    if err := db.QueryRow("SELECT name FROM roles WHERE id=$1", idStr).Scan(&roleName); err != nil {
+    err = db.QueryRow("SELECT name FROM roles WHERE id=$1", idStr).Scan(&roleName); if err != nil {
         writeJSON(w, 404, map[string]string{"error":"role_not_found"}); return
     }
     var cnt int
-    if err := db.QueryRow("SELECT COUNT(1) FROM users WHERE role=$1", roleName).Scan(&cnt); err != nil {
+    err = db.QueryRow("SELECT COUNT(1) FROM users WHERE role=$1", roleName).Scan(&cnt); if err != nil {
         writeJSON(w, 500, map[string]string{"error":err.Error()}); return
     }
     if cnt > 0 { writeJSON(w, 409, map[string]string{"error":"role_in_use"}); return }
@@ -322,7 +500,22 @@ func authMeHandler(w http.ResponseWriter, r *http.Request) {
     email := username
     nama := email
     if i := strings.Index(email, "@"); i > 0 { nama = email[:i] }
-    writeJSON(w, 200, map[string]interface{}{"id": id, "nama": nama, "email": email, "role": role, "roles": []string{role}, "status":"aktif"})
+    // Collect assigned roles
+    roles := []string{role}
+    rows, err := db.Query("SELECT r.name FROM user_roles ur JOIN roles r ON r.id=ur.role_id WHERE ur.user_id=$1", id)
+    if err == nil {
+        defer rows.Close()
+        for rows.Next() {
+            var rn string
+            if scanErr := rows.Scan(&rn); scanErr == nil {
+                // avoid duplicates
+                dup := false
+                for _, ex := range roles { if ex == rn { dup = true; break } }
+                if !dup { roles = append(roles, rn) }
+            }
+        }
+    }
+    writeJSON(w, 200, map[string]interface{}{"id": id, "nama": nama, "email": email, "role": role, "roles": roles, "status":"aktif"})
 }
 
 func authPermissionsHandler(w http.ResponseWriter, r *http.Request) {
@@ -344,17 +537,81 @@ func authPermissionsHandler(w http.ResponseWriter, r *http.Request) {
 
 func listRolesUser(w http.ResponseWriter, r *http.Request) {
     if !dbReady { writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error":"db_unavailable"}); return }
-    rows, err := db.Query("SELECT id, username, role FROM users ORDER BY id")
+    q := r.URL.Query()
+    userIDStr := strings.TrimSpace(q.Get("user_id"))
+    query := strings.TrimSpace(q.Get("q"))
+    page, _ := strconv.Atoi(q.Get("page")); if page < 1 { page = 1 }
+    limit, _ := strconv.Atoi(q.Get("limit")); if limit < 1 { limit = 10 }
+    offset := (page - 1) * limit
+
+    // Build filters
+    filters := []string{"1=1"}
+    args := []interface{}{}
+    if userIDStr != "" {
+        filters = append(filters, "ur.user_id = $1")
+        uid, _ := strconv.Atoi(userIDStr)
+        args = append(args, uid)
+    }
+    // For text query, match username or role name
+    if query != "" {
+        ph := "$" + strconv.Itoa(len(args)+1)
+        // Use proper parameter concatenation for LIKE: '%' || $n || '%'
+        filters = append(filters, "(u.username ILIKE '%' || "+ph+" || '%' OR r.name ILIKE '%' || "+ph+" || '%')")
+        args = append(args, query)
+    }
+
+    where := "WHERE " + strings.Join(filters, " AND ")
+    // Total count
+    countSQL := "SELECT COUNT(*) FROM user_roles ur JOIN users u ON u.id=ur.user_id JOIN roles r ON r.id=ur.role_id " + where
+    var total int
+    if err := db.QueryRow(countSQL, args...).Scan(&total); err != nil { writeJSON(w, 500, map[string]string{"error":err.Error()}); return }
+
+    // List with pagination
+    listSQL := "SELECT ur.id, ur.user_id, ur.role_id, r.name FROM user_roles ur JOIN roles r ON r.id=ur.role_id JOIN users u ON u.id=ur.user_id " + where + " ORDER BY ur.id LIMIT $"+strconv.Itoa(len(args)+1)+" OFFSET $"+strconv.Itoa(len(args)+2)
+    rows, err := db.Query(listSQL, append(args, limit, offset)...)
     if err != nil { writeJSON(w, 500, map[string]string{"error":err.Error()}); return }
     defer rows.Close()
-    var out []map[string]interface{}
+    var out []RoleAssignment
     for rows.Next() {
-        var id int
-        var username, role string
-        if err := rows.Scan(&id, &username, &role); err != nil { writeJSON(w, 500, map[string]string{"error":err.Error()}); return }
-        out = append(out, map[string]interface{}{"user_id": id, "username": username, "role": role})
+        var it RoleAssignment
+        if err := rows.Scan(&it.ID, &it.UserID, &it.RoleID, &it.Role); err != nil { writeJSON(w, 500, map[string]string{"error":err.Error()}); return }
+        out = append(out, it)
     }
-    writeJSON(w, 200, out)
+    writeJSON(w, 200, map[string]interface{}{"data": out, "meta": map[string]int{"page": page, "limit": limit, "total": total, "pages": func() int { if limit <= 0 { return 1 } ; if total == 0 { return 1 } ; p := total / limit ; if total%limit != 0 { p++ } ; if p < 1 { p = 1 } ; return p }() }})
+}
+
+func createRoleAssignment(w http.ResponseWriter, r *http.Request) {
+    if !dbReady { writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error":"db_unavailable"}); return }
+    var in struct { UserID int `json:"user_id"`; RoleID int `json:"role_id"` }
+    if err := json.NewDecoder(r.Body).Decode(&in); err != nil { writeJSON(w, 400, map[string]string{"error":"invalid json"}); return }
+    if in.UserID <= 0 || in.RoleID <= 0 { writeJSON(w, 400, map[string]string{"error":"user_id and role_id required"}); return }
+    // Validate existence
+    var exists int
+    if err := db.QueryRow("SELECT COUNT(*) FROM users WHERE id=$1", in.UserID).Scan(&exists); err != nil || exists == 0 { writeJSON(w, 404, map[string]string{"error":"user_not_found"}); return }
+    if err := db.QueryRow("SELECT COUNT(*) FROM roles WHERE id=$1", in.RoleID).Scan(&exists); err != nil || exists == 0 { writeJSON(w, 404, map[string]string{"error":"role_not_found"}); return }
+    // Insert
+    var id int
+    err := db.QueryRow("INSERT INTO user_roles(user_id, role_id) VALUES($1,$2) ON CONFLICT(user_id, role_id) DO NOTHING RETURNING id", in.UserID, in.RoleID).Scan(&id)
+    if err != nil {
+        // If conflict (already exists), fetch the existing id
+        row := db.QueryRow("SELECT id FROM user_roles WHERE user_id=$1 AND role_id=$2", in.UserID, in.RoleID)
+        _ = row.Scan(&id)
+    }
+    // Fetch role name
+    var roleName string
+    _ = db.QueryRow("SELECT name FROM roles WHERE id=$1", in.RoleID).Scan(&roleName)
+    writeJSON(w, 200, map[string]interface{}{"id": id, "user_id": in.UserID, "role_id": in.RoleID, "role": roleName})
+}
+
+func deleteRoleAssignment(w http.ResponseWriter, r *http.Request) {
+    if !dbReady { writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error":"db_unavailable"}); return }
+    id, err := parseIDFromPath(r.URL.Path, "/roles-user/")
+    if err != nil { writeJSON(w, 400, map[string]string{"error":"invalid id"}); return }
+    res, err := db.Exec("DELETE FROM user_roles WHERE id=$1", id)
+    if err != nil { writeJSON(w, 500, map[string]string{"error":err.Error()}); return }
+    n, _ := res.RowsAffected()
+    if n == 0 { writeJSON(w, 404, map[string]string{"error":"assignment_not_found"}); return }
+    writeJSON(w, 200, map[string]string{"status":"deleted"})
 }
 
 func hasPermissions(w http.ResponseWriter, r *http.Request) {
@@ -362,11 +619,54 @@ func hasPermissions(w http.ResponseWriter, r *http.Request) {
     q := r.URL.Query()
     username := q.Get("username")
     if username == "" { writeJSON(w, 400, map[string]string{"error":"username required"}); return }
-    var role string
-    err := db.QueryRow("SELECT role FROM users WHERE username=$1", username).Scan(&role)
+    var userID int
+    err := db.QueryRow("SELECT id FROM users WHERE username=$1", username).Scan(&userID)
     if err != nil { writeJSON(w, 404, map[string]string{"error":"user_not_found"}); return }
-    allowed := role == "superadmin" || role == "admin"
+    rows, err := db.Query("SELECT r.name FROM user_roles ur JOIN roles r ON ur.role_id = r.id WHERE ur.user_id=$1", userID)
+    if err != nil { writeJSON(w, 500, map[string]string{"error":err.Error()}); return }
+    defer rows.Close()
+    allowed := false
+    for rows.Next() {
+        var name string
+        if err := rows.Scan(&name); err != nil { writeJSON(w, 500, map[string]string{"error":err.Error()}); return }
+        if name == "superadmin" || name == "admin" { allowed = true; break }
+    }
     writeJSON(w, 200, map[string]bool{"allowed": allowed})
+}
+
+// fetchJabatanMap retrieves {id:name} mapping from setting-service
+func fetchJabatanMap() (map[int]string, error) {
+    m := map[int]string{}
+    client := &http.Client{ Timeout: 3 * time.Second }
+    req, err := http.NewRequest(http.MethodGet, envOr("SETTING_SERVICE_URL", "http://setting-service:3000")+"/jabatan", nil)
+    if err != nil { return m, err }
+    resp, err := client.Do(req)
+    if err != nil { return m, err }
+    defer resp.Body.Close()
+    var data interface{}
+    if err := json.NewDecoder(resp.Body).Decode(&data); err != nil { return m, err }
+    // data could be an array of {id,name}
+    if arr, ok := data.([]interface{}); ok {
+        for _, item := range arr {
+            if obj, ok := item.(map[string]interface{}); ok {
+                idf, idok := obj["id"].(float64)
+                name, nok := obj["name"].(string)
+                if idok && nok { m[int(idf)] = name }
+            }
+        }
+    } else if obj, ok := data.(map[string]interface{}); ok {
+        // or {data: [...]} shape
+        if arr, ok := obj["data"].([]interface{}); ok {
+            for _, item := range arr {
+                if mobj, ok := item.(map[string]interface{}); ok {
+                    idf, idok := mobj["id"].(float64)
+                    name, nok := mobj["name"].(string)
+                    if idok && nok { m[int(idf)] = name }
+                }
+            }
+        }
+    }
+    return m, nil
 }
 
 func b64url(data []byte) string {
@@ -465,6 +765,57 @@ func main() {
             writeJSON(w, 404, map[string]string{"error":"not_found"})
             return
         }
+        // Toggle/update active status: PUT /users/{id}/active
+        if r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/active") {
+            s := strings.TrimPrefix(r.URL.Path, "/users/")
+            parts := strings.Split(strings.Trim(s, "/"), "/")
+            if len(parts) >= 2 {
+                id, err := strconv.Atoi(parts[0])
+                if err != nil { writeJSON(w, 400, map[string]string{"error":"invalid id"}); return }
+                // Try to accept various input forms: query param, JSON body, or toggle when no body
+                qActive := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("active")))
+                var targetActive *bool
+                if qActive == "true" { b := true; targetActive = &b }
+                if qActive == "false" { b := false; targetActive = &b }
+                if targetActive == nil {
+                    // Read raw body to handle empty, JSON, plain text, or form-like input
+                    bodyBytes, _ := io.ReadAll(r.Body)
+                    raw := strings.TrimSpace(string(bodyBytes))
+                    if len(raw) == 0 {
+                        // No body: toggle current value
+                        var cur bool
+                        if err := db.QueryRow("SELECT active FROM users WHERE id=$1", id).Scan(&cur); err != nil { writeJSON(w, 404, map[string]string{"error":"user_not_found"}); return }
+                        b := !cur
+                        targetActive = &b
+                    } else {
+                        // Try JSON first
+                        type In struct { Active *bool `json:"active"` }
+                        var in In
+                        if err := json.Unmarshal(bodyBytes, &in); err == nil {
+                            targetActive = in.Active
+                        } else {
+                            // Try plain boolean text
+                            low := strings.ToLower(raw)
+                            if low == "true" { b := true; targetActive = &b }
+                            if low == "false" { b := false; targetActive = &b }
+                            if targetActive == nil {
+                                // Try form-like: active=true/false
+                                vals, _ := url.ParseQuery(raw)
+                                av := strings.ToLower(strings.TrimSpace(vals.Get("active")))
+                                if av == "true" { b := true; targetActive = &b }
+                                if av == "false" { b := false; targetActive = &b }
+                            }
+                        }
+                    }
+                }
+                if targetActive == nil { writeJSON(w, 400, map[string]string{"error":"active required"}); return }
+                if _, err := db.Exec("UPDATE users SET active=$1 WHERE id=$2", *targetActive, id); err != nil { writeJSON(w, 500, map[string]string{"error":err.Error()}); return }
+                writeJSON(w, 200, map[string]interface{}{"status":"updated","active":*targetActive})
+                return
+            }
+            writeJSON(w, 404, map[string]string{"error":"not_found"})
+            return
+        }
         // CRUD pada /users/{id}
         switch r.Method {
         case http.MethodPut:
@@ -477,8 +828,41 @@ func main() {
             w.WriteHeader(http.StatusMethodNotAllowed)
         }
     })
-    mux.HandleFunc("/roles-user", listRolesUser)
+    // Roles-User CRUD: list and create
+    mux.HandleFunc("/roles-user", func(w http.ResponseWriter, r *http.Request) {
+        switch r.Method {
+        case http.MethodGet:
+            listRolesUser(w, r)
+        case http.MethodPost:
+            createRoleAssignment(w, r)
+        default:
+            w.WriteHeader(http.StatusMethodNotAllowed)
+        }
+    })
+    // Roles-User delete by id
+    mux.HandleFunc("/roles-user/", func(w http.ResponseWriter, r *http.Request) {
+        switch r.Method {
+        case http.MethodDelete:
+            deleteRoleAssignment(w, r)
+        default:
+            w.WriteHeader(http.StatusMethodNotAllowed)
+        }
+    })
     mux.HandleFunc("/has-permissions", hasPermissions)
+
+    // permissions endpoints untuk halaman Has Permissions
+    mux.HandleFunc("/permissions", func(w http.ResponseWriter, r *http.Request) {
+        if r.Method == http.MethodGet { listPermissions(w, r); return }
+        w.WriteHeader(http.StatusMethodNotAllowed)
+    })
+    mux.HandleFunc("/permissions/by-role/", func(w http.ResponseWriter, r *http.Request) {
+        if r.Method == http.MethodGet { permissionsByRole(w, r); return }
+        w.WriteHeader(http.StatusMethodNotAllowed)
+    })
+    mux.HandleFunc("/permissions/assign/", func(w http.ResponseWriter, r *http.Request) {
+        if r.Method == http.MethodPut { assignPermissions(w, r); return }
+        w.WriteHeader(http.StatusMethodNotAllowed)
+    })
 
     log.Println("auth-user-service-go listening on :3000")
     if err := http.ListenAndServe(":3000", mux); err != nil { log.Fatal(err) }

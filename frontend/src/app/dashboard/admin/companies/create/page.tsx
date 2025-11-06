@@ -1,40 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Swal from "sweetalert2";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
-type Company = {
+type CompanyForm = {
   nama: string;
-  label: string;
   alamat: string;
-  kota: string;
-  provinsi: string;
-  nomor: string;
-  kode: string;
+  label: string;
+  nomor_izin: string;
   ceo: string;
-  since: string;
-  signature: string;
-  stamp: string;
+  since: string; // YYYY-MM-DD
+  logo?: File | null;
+  signature?: File | null;
+  stamp?: File | null;
 };
 
 export default function CreateCompanyPage() {
   const router = useRouter();
-  const [company, setCompany] = useState<Company>({
-    nama: "",
-    label: "",
-    alamat: "",
-    kota: "",
-    provinsi: "",
-    nomor: "",
-    kode: "",
-    ceo: "",
-    since: "",
-    signature: "",
-    stamp: "",
-  });
+  const [company, setCompany] = useState<CompanyForm>({ nama: "", alamat: "", label: "", nomor_izin: "", ceo: "", since: "", logo: null, signature: null, stamp: null });
   const [saving, setSaving] = useState(false);
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
@@ -48,10 +34,20 @@ export default function CreateCompanyPage() {
     }
     setSaving(true);
     try {
+      const fd = new FormData();
+      fd.set("name", company.nama);
+      if (company.alamat) fd.set("address", company.alamat);
+      if (company.label) fd.set("label", company.label);
+      if (company.nomor_izin) fd.set("license_number", company.nomor_izin);
+      if (company.ceo) fd.set("ceo", company.ceo);
+      if (company.since) fd.set("since", company.since);
+      if (company.logo) fd.set("logo", company.logo);
+      if (company.signature) fd.set("signature", company.signature);
+      if (company.stamp) fd.set("stamp", company.stamp);
       const res = await fetch(`${API_URL}/companies`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(company),
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
       });
       const ct = res.headers.get("content-type") || "";
       const data = ct.includes("application/json")
@@ -66,6 +62,25 @@ export default function CreateCompanyPage() {
       setSaving(false);
     }
   };
+
+  // Inisialisasi Flowbite Datepicker (lokal dari node_modules)
+  useEffect(() => {
+    const init = async () => {
+      if (typeof window === "undefined") return;
+      const el = document.getElementById("since") as HTMLInputElement | null;
+      if (!el) return;
+      try {
+        await import("flowbite");
+        const mod = await import("flowbite-datepicker");
+        const Datepicker = (mod as any).default || (mod as any).Datepicker;
+        // Format YYYY-MM-DD agar konsisten dengan backend
+        new Datepicker(el, { autohide: true, format: "yyyy-mm-dd" });
+      } catch (err) {
+        // Diamkan jika gagal load, input native tetap bekerja
+      }
+    };
+    init();
+  }, []);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-sky-50 to-purple-100 p-6">
@@ -102,34 +117,8 @@ export default function CreateCompanyPage() {
 
             {/* Label */}
             <div className="relative z-0">
-              <input
-                type="text"
-                id="label"
-                value={company.label}
-                onChange={(e)=>setCompany({ ...company, label: e.target.value })}
-                placeholder=" "
-                autoComplete="off"
-                className="block w-full px-3 pb-2.5 pt-5 text-sm text-gray-900 bg-white rounded-lg border border-gray-300 appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent peer"
-              />
+              <input type="text" id="label" value={company.label} onChange={(e)=>setCompany({ ...company, label: e.target.value })} placeholder=" " autoComplete="off" className="block w-full px-3 pb-2.5 pt-5 text-sm text-gray-900 bg-white rounded-lg border border-gray-300 appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent peer" />
               <label htmlFor="label" className="absolute text-sm text-gray-500 duration-300 transform -translate-y-4 scale-75 top-3 left-3 z-10 origin-[0] bg-white px-1 peer-placeholder-shown:translate-y-2 peer-placeholder-shown:scale-100 peer-focus:-translate-y-5 peer-focus:scale-75 peer-focus:text-blue-600">Label</label>
-            </div>
-
-            {/* Kota */}
-            <div className="relative z-0">
-              <input type="text" id="kota" value={company.kota} onChange={(e)=>setCompany({ ...company, kota: e.target.value })} placeholder=" " autoComplete="off" className="block w-full px-3 pb-2.5 pt-5 text-sm text-gray-900 bg-white rounded-lg border border-gray-300 appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent peer" />
-              <label htmlFor="kota" className="absolute text-sm text-gray-500 duration-300 transform -translate-y-4 scale-75 top-3 left-3 z-10 origin-[0] bg-white px-1 peer-placeholder-shown:translate-y-2 peer-placeholder-shown:scale-100 peer-focus:-translate-y-5 peer-focus:scale-75 peer-focus:text-blue-600">Kota</label>
-            </div>
-
-            {/* Provinsi */}
-            <div className="relative z-0">
-              <input type="text" id="provinsi" value={company.provinsi} onChange={(e)=>setCompany({ ...company, provinsi: e.target.value })} placeholder=" " autoComplete="off" className="block w-full px-3 pb-2.5 pt-5 text-sm text-gray-900 bg-white rounded-lg border border-gray-300 appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent peer" />
-              <label htmlFor="provinsi" className="absolute text-sm text-gray-500 duration-300 transform -translate-y-4 scale-75 top-3 left-3 z-10 origin-[0] bg-white px-1 peer-placeholder-shown:translate-y-2 peer-placeholder-shown:scale-100 peer-focus:-translate-y-5 peer-focus:scale-75 peer-focus:text-blue-600">Provinsi</label>
-            </div>
-
-            {/* Kode */}
-            <div className="relative z-0">
-              <input type="text" id="kode" value={company.kode} onChange={(e)=>setCompany({ ...company, kode: e.target.value })} placeholder=" " autoComplete="off" className="block w-full px-3 pb-2.5 pt-5 text-sm text-gray-900 bg-white rounded-lg border border-gray-300 appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent peer" />
-              <label htmlFor="kode" className="absolute text-sm text-gray-500 duration-300 transform -translate-y-4 scale-75 top-3 left-3 z-10 origin-[0] bg-white px-1 peer-placeholder-shown:translate-y-2 peer-placeholder-shown:scale-100 peer-focus:-translate-y-5 peer-focus:scale-75 peer-focus:text-blue-600">Kode</label>
             </div>
 
             {/* CEO */}
@@ -138,34 +127,43 @@ export default function CreateCompanyPage() {
               <label htmlFor="ceo" className="absolute text-sm text-gray-500 duration-300 transform -translate-y-4 scale-75 top-3 left-3 z-10 origin-[0] bg-white px-1 peer-placeholder-shown:translate-y-2 peer-placeholder-shown:scale-100 peer-focus:-translate-y-5 peer-focus:scale-75 peer-focus:text-blue-600">CEO</label>
             </div>
 
-            {/* Sejak */}
+            {/* Nomor Izin */}
             <div className="relative z-0">
-              <input type="text" id="since" value={company.since} onChange={(e)=>setCompany({ ...company, since: e.target.value })} placeholder=" " autoComplete="off" className="block w-full px-3 pb-2.5 pt-5 text-sm text-gray-900 bg-white rounded-lg border border-gray-300 appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent peer" />
+              <input type="text" id="nomor_izin" value={company.nomor_izin} onChange={(e)=>setCompany({ ...company, nomor_izin: e.target.value })} placeholder=" " autoComplete="off" className="block w-full px-3 pb-2.5 pt-5 text-sm text-gray-900 bg-white rounded-lg border border-gray-300 appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent peer" />
+              <label htmlFor="nomor_izin" className="absolute text-sm text-gray-500 duration-300 transform -translate-y-4 scale-75 top-3 left-3 z-10 origin-[0] bg-white px-1 peer-placeholder-shown:translate-y-2 peer-placeholder-shown:scale-100 peer-focus:-translate-y-5 peer-focus:scale-75 peer-focus:text-blue-600">Nomor Izin</label>
+            </div>
+
+            {/* Sejak (Since) */}
+            <div className="relative z-0">
+              <div className="relative max-w-sm">
+                <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+                  <svg className="w-4 h-4 text-gray-500" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20"><path d="M20 4a2 2 0 0 0-2-2h-2V1a1 1 0 0 0-2 0v1h-3V1a1 1 0 0 0-2 0v1H6V1a1 1 0 0 0-2 0v1H2a2 2 0 0 0-2 2v2h20V4ZM0 18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8H0v10Zm5-8h10a1 1 0 0 1 0 2H5a1 1 0 0 1 0-2Z"/></svg>
+                </div>
+                <input type="date" id="since" value={company.since} onChange={(e)=>setCompany({ ...company, since: e.target.value })} placeholder="Select date" autoComplete="off" className="block w-full ps-10 p-2.5 text-sm text-gray-900 bg-white rounded-lg border border-gray-300 focus:ring-blue-500 focus:border-blue-500" />
+              </div>
               <label htmlFor="since" className="absolute text-sm text-gray-500 duration-300 transform -translate-y-4 scale-75 top-3 left-3 z-10 origin-[0] bg-white px-1 peer-placeholder-shown:translate-y-2 peer-placeholder-shown:scale-100 peer-focus:-translate-y-5 peer-focus:scale-75 peer-focus:text-blue-600">Sejak</label>
             </div>
+          </div>
 
-            {/* Nomor */}
-            <div className="relative z-0">
-              <input type="text" id="nomor" value={company.nomor} onChange={(e)=>setCompany({ ...company, nomor: e.target.value })} placeholder=" " autoComplete="off" className="block w-full px-3 pb-2.5 pt-5 text-sm text-gray-900 bg-white rounded-lg border border-gray-300 appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent peer" />
-              <label htmlFor="nomor" className="absolute text-sm text-gray-500 duration-300 transform -translate-y-4 scale-75 top-3 left-3 z-10 origin-[0] bg-white px-1 peer-placeholder-shown:translate-y-2 peer-placeholder-shown:scale-100 peer-focus:-translate-y-5 peer-focus:scale-75 peer-focus:text-blue-600">Nomor</label>
+          {/* Alamat */}
+          <div className="relative z-0">
+            <textarea id="alamat" value={company.alamat} onChange={(e)=>setCompany({ ...company, alamat: e.target.value })} placeholder=" " className="block w-full px-3 pb-2.5 pt-5 text-sm text-gray-900 bg-white rounded-lg border border-gray-300 appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent peer" rows={3}></textarea>
+            <label htmlFor="alamat" className="absolute text-sm text-gray-500 duration-300 transform -translate-y-4 scale-75 top-3 left-3 z-10 origin-[0] bg-white px-1 peer-focus:-translate-y-5 peer-focus:scale-75 peer-focus:text-blue-600">Alamat</label>
+          </div>
+
+          {/* Uploads */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm text-gray-700 mb-1">Logo</label>
+              <input type="file" accept="image/*" onChange={(e)=>setCompany({ ...company, logo: e.target.files?.[0] || null })} />
             </div>
-
-            {/* Alamat */}
-            <div className="relative z-0 md:col-span-2">
-              <input type="text" id="alamat" value={company.alamat} onChange={(e)=>setCompany({ ...company, alamat: e.target.value })} placeholder=" " autoComplete="off" className="block w-full px-3 pb-2.5 pt-5 text-sm text-gray-900 bg-white rounded-lg border border-gray-300 appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent peer" />
-              <label htmlFor="alamat" className="absolute text-sm text-gray-500 duration-300 transform -translate-y-4 scale-75 top-3 left-3 z-10 origin-[0] bg-white px-1 peer-placeholder-shown:translate-y-2 peer-placeholder-shown:scale-100 peer-focus:-translate-y-5 peer-focus:scale-75 peer-focus:text-blue-600">Alamat</label>
+            <div>
+              <label className="block text-sm text-gray-700 mb-1">Signature</label>
+              <input type="file" accept="image/*" onChange={(e)=>setCompany({ ...company, signature: e.target.files?.[0] || null })} />
             </div>
-
-            {/* Signature */}
-            <div className="relative z-0">
-              <input type="text" id="signature" value={company.signature} onChange={(e)=>setCompany({ ...company, signature: e.target.value })} placeholder=" " autoComplete="off" className="block w-full px-3 pb-2.5 pt-5 text-sm text-gray-900 bg-white rounded-lg border border-gray-300 appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent peer" />
-              <label htmlFor="signature" className="absolute text-sm text-gray-500 duration-300 transform -translate-y-4 scale-75 top-3 left-3 z-10 origin-[0] bg-white px-1 peer-placeholder-shown:translate-y-2 peer-placeholder-shown:scale-100 peer-focus:-translate-y-5 peer-focus:scale-75 peer-focus:text-blue-600">Signature (teks/URL)</label>
-            </div>
-
-            {/* Stamp */}
-            <div className="relative z-0">
-              <input type="text" id="stamp" value={company.stamp} onChange={(e)=>setCompany({ ...company, stamp: e.target.value })} placeholder=" " autoComplete="off" className="block w-full px-3 pb-2.5 pt-5 text-sm text-gray-900 bg-white rounded-lg border border-gray-300 appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent peer" />
-              <label htmlFor="stamp" className="absolute text-sm text-gray-500 duration-300 transform -translate-y-4 scale-75 top-3 left-3 z-10 origin-[0] bg-white px-1 peer-placeholder-shown:translate-y-2 peer-placeholder-shown:scale-100 peer-focus:-translate-y-5 peer-focus:scale-75 peer-focus:text-blue-600">Stamp (teks/URL)</label>
+            <div>
+              <label className="block text-sm text-gray-700 mb-1">Stamp</label>
+              <input type="file" accept="image/*" onChange={(e)=>setCompany({ ...company, stamp: e.target.files?.[0] || null })} />
             </div>
           </div>
 

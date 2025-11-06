@@ -34,16 +34,14 @@ export default function RolesUserPage() {
     setLoading(true);
     const qs: string[] = [];
     if (query) qs.push(`q=${encodeURIComponent(query)}`);
+    if (userIdFilter) qs.push(`user_id=${encodeURIComponent(userIdFilter)}`);
     qs.push(`page=${page}`);
     qs.push(`limit=${limit}`);
-    fetch(`${API_URL}/users?${qs.join("&")}`, { headers: { Authorization: `Bearer ${token}` }})
+    fetch(`${API_URL}/roles-user?${qs.join("&")}`, { headers: { Authorization: `Bearer ${token}` }})
       .then(r=>r.json().catch(()=>({})))
       .then(d=>{
         const arr: any[] = Array.isArray(d?.data) ? d.data : [];
-        const items: Assignment[] = arr.map((u:any)=>({ id: u.id, user_id: u.id, role: u.role || '-' }));
-        // derive role_id by matching name if available
-        const roleNameToId = new Map(roles.map(r=>[r.name, r.id] as const));
-        items.forEach(it => { const rid = roleNameToId.get(it.role); if (rid) it.role_id = rid; });
+        const items: Assignment[] = arr.map((x:any)=>({ id: x.id, user_id: x.user_id, role_id: x.role_id, role: x.role || '-' }));
         setItems(items);
         const meta = d?.meta || {};
         if (typeof meta.total === 'number') setTotal(meta.total);
@@ -71,23 +69,21 @@ export default function RolesUserPage() {
     const uid = parseInt(assign.user_id||"0", 10);
     const rid = parseInt(assign.role_id||"0", 10);
     if (!uid || !rid) return Swal.fire({ title: "Validasi", text: "Pilih user dan role", icon: "warning" });
-    const roleName = roles.find(r=>r.id===rid)?.name;
-    if (!roleName) return Swal.fire({ title: "Gagal", text: "Role tidak ditemukan", icon: "error" });
-    const res = await fetch(`${API_URL}/users/${uid}`, { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ role: roleName }) });
+    const res = await fetch(`${API_URL}/roles-user`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ user_id: uid, role_id: rid }) });
     const data = await res.json().catch(()=>({}));
-    if (!res.ok) return Swal.fire({ title: "Gagal", text: data?.error || "Gagal mengubah role user", icon: "error" });
-    Swal.fire({ title: "Berhasil", text: "Role user diubah", icon: "success" });
+    if (!res.ok) return Swal.fire({ title: "Gagal", text: data?.error || "Gagal menambahkan role user", icon: "error" });
+    Swal.fire({ title: "Berhasil", text: "Role user ditambahkan", icon: "success" });
     setAssign({ user_id: "", role_id: "" });
     load();
   };
 
   const remove = async (it: Assignment) => {
-    const ok = await Swal.fire({ title: "Kosongkan Role User?", text: `${userMap.get(it.user_id) || 'User'} • ${it.role}`, icon: "warning", showCancelButton: true, confirmButtonText: "Ya, kosongkan" });
+    const ok = await Swal.fire({ title: "Hapus Role User?", text: `${userMap.get(it.user_id) || 'User'} • ${it.role}`, icon: "warning", showCancelButton: true, confirmButtonText: "Ya, hapus" });
     if (!ok.isConfirmed || !token) return;
-    const res = await fetch(`${API_URL}/users/${it.user_id}`, { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ role: "" }) });
+    const res = await fetch(`${API_URL}/roles-user/${it.id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
     const data = await res.json().catch(()=>({}));
-    if (!res.ok) return Swal.fire({ title: "Gagal", text: data?.error || "Gagal mengosongkan role", icon: "error" });
-    Swal.fire({ title: "Berhasil", text: "Role user dikosongkan", icon: "success" });
+    if (!res.ok) return Swal.fire({ title: "Gagal", text: data?.error || "Gagal menghapus role user", icon: "error" });
+    Swal.fire({ title: "Berhasil", text: "Role user dihapus", icon: "success" });
     load();
   };
 

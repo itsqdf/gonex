@@ -93,6 +93,25 @@ export default function UsersPage() {
     Swal.fire({ title: "Berhasil", text: `Password default: ${defaultPwd}`, icon: "success" });
   };
 
+  const goDetailUser = (u: User) => {
+    router.push(`/dashboard/admin/users/${u.id}`);
+  };
+
+  const toggleActive = async (u: User) => {
+    const active = (u.status || "").toLowerCase().includes("aktif");
+    try {
+      const res = await fetch(`${API_URL}/users/${u.id}/active`, { method: "PUT", headers: { ...authHeaders(), "Content-Type": "application/json" }, body: JSON.stringify({ active: !active }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return Swal.fire({ title: "Gagal", text: data?.error || "Tidak dapat mengubah status.", icon: "error" });
+      }
+      Swal.fire({ title: "Berhasil", text: `Status ${u.nama} diubah.`, icon: "success", timer: 800, showConfirmButton: false });
+      loadUsers();
+    } catch {
+      Swal.fire({ title: "Gagal", text: "Tidak dapat terhubung ke server.", icon: "error" });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-sky-50 to-purple-100 p-6">
       <div className="max-w-5xl mx-auto">
@@ -163,6 +182,25 @@ export default function UsersPage() {
                       <td className="py-2 text-black">{u.jabatan || '-'}</td>
                       <td className="py-2">
                         <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => goDetailUser(u)}
+                            aria-label="Detail pengguna"
+                            className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm border border-gray-300"
+                            title="Detail"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path d="M12 5c-7 0-10 7-10 7s3 7 10 7 10-7 10-7-3-7-10-7Zm0 12a5 5 0 1 1 0-10 5 5 0 0 1 0 10Z"/></svg>
+                            <span>Detail</span>
+                          </button>
+                          <button
+                            onClick={() => toggleActive(u)}
+                            aria-label="Toggle aktif"
+                            className={`inline-flex items-center gap-1.5 px-2 py-1 rounded text-sm border ${ (u.status||'').toLowerCase().includes('aktif') ? 'bg-green-600 hover:bg-green-700 text-white border-green-700/40' : 'bg-gray-500 hover:bg-gray-600 text-white border-gray-600/40'}`}
+                            title={(u.status||'').toLowerCase().includes('aktif') ? 'Matikan' : 'Nyalakan'}
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+                              <path d="M12 2a1 1 0 0 1 1 1v7a1 1 0 1 1-2 0V3a1 1 0 0 1 1-1Zm0 22A8 8 0 1 1 12 6a8 8 0 0 1 0 18Z" />
+                            </svg>
+                          </button>
                           <button
                             onClick={() => goEditUser(u)}
                             aria-label="Edit pengguna"

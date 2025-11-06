@@ -13,17 +13,17 @@ export default function Sidebar() {
   const [open, setOpen] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
   const [perms, setPerms] = useState<string[]>([]);
-  const [openMaster, setOpenMaster] = useState(false);
-  const [openAccess, setOpenAccess] = useState(false);
-  const [openKas, setOpenKas] = useState(false);
-  const [openProduk, setOpenProduk] = useState(false);
-  const [openRuangan, setOpenRuangan] = useState(false);
-  const [openSetting, setOpenSetting] = useState(false);
-  const [openAsset, setOpenAsset] = useState(false);
-  const [openPresensi, setOpenPresensi] = useState(false);
-  const [openPayment, setOpenPayment] = useState(false);
-  const [openChat, setOpenChat] = useState(false);
-  const [openML, setOpenML] = useState(false);
+  const [openMaster, setOpenMaster] = useState(true);
+  const [openAccess, setOpenAccess] = useState(true);
+  const [openKas, setOpenKas] = useState(true);
+  const [openProduk, setOpenProduk] = useState(true);
+  const [openRuangan, setOpenRuangan] = useState(true);
+  const [openSetting, setOpenSetting] = useState(true);
+  const [openAsset, setOpenAsset] = useState(true);
+  const [openPresensi, setOpenPresensi] = useState(true);
+  const [openPayment, setOpenPayment] = useState(true);
+  const [openChat, setOpenChat] = useState(true);
+  const [openML, setOpenML] = useState(true);
   const [profile, setProfile] = useState<any>(null);
   const pathname = usePathname();
   const router = useRouter();
@@ -115,10 +115,10 @@ export default function Sidebar() {
       {/* Overlay when open on small screens */}
       {open && <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-30" onClick={() => setOpen(false)} />}
 
-      <div className={`fixed z-40 top-0 left-0 h-full w-72 transition-transform duration-200 ${open ? 'translate-x-0' : '-translate-x-full'}`}>
+      <div className={`fixed z-40 top-0 left-0 h-full w-72 overflow-y-auto transition-transform duration-200 ${open ? 'translate-x-0' : '-translate-x-full'}`}>
         {/* Guard terhadap perubahan API Flowbite: fallback markup sederhana jika sub-komponen tidak tersedia */}
         {S && S.Items && S.ItemGroup ? (
-          <S aria-label="Main Navigation" className="h-full">
+          <S aria-label="Main Navigation" className="h-full overflow-y-auto">
             <S.Items>
               <S.ItemGroup>
                 <div className="px-2 py-3">
@@ -196,7 +196,7 @@ export default function Sidebar() {
             </S.Items>
           </S>
         ) : (
-          <nav className="h-full bg-indigo-700 text-white">
+          <nav className="h-full bg-indigo-700 text-white overflow-y-auto">
             <div className="px-2 py-3">
               <div className="flex items-center gap-3">
                 <img src="/golang_ac.png" alt="Golang Logo" className="h-8 w-8" />

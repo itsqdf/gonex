@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Swal from "sweetalert2";
 import { Label, TextInput, Select, FileInput, Button, Datepicker } from "flowbite-react";
+import FloatingInput from "../../../../../../components/FloatingInput";
+import FloatingSelect from "../../../../../../components/FloatingSelect";
+import FloatingDatepicker from "../../../../../../components/FloatingDatepicker";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
@@ -25,24 +28,39 @@ export default function EditUserPage() {
   const [user, setUser] = useState<User | null>(null);
   const [saving, setSaving] = useState(false);
   const [jabatans, setJabatans] = useState<{ id:number; name:string }[]>([]);
+  const [selectedJabatanId, setSelectedJabatanId] = useState<string>("");
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
   useEffect(() => {
-    if (!token || !id) return;
-    fetch(`${API_URL}/users/${id}`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => r.json())
-      .then((data) => setUser(data.user || data))
-      .catch(() => {})
-      ;
-    // load jabatan for select
-    fetch(`${API_URL}/jabatan?limit=200`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r=>r.json().catch(()=>({})))
-      .then(d=>{
-        const arr = Array.isArray(d?.data) ? d.data : Array.isArray(d?.jabatan) ? d.jabatan : [];
-        if (Array.isArray(arr)) setJabatans(arr.map((x:any)=>({ id:x.id, name:x.name })));
-      });
+    if (token && id) {
+      fetch(`${API_URL}/users/${id}`, { headers: { Authorization: `Bearer ${token}` } })
+        .then((r) => r.json())
+        .then((data) => setUser(data.user || data))
+        .catch(() => {});
+    }
   }, [id, token]);
+
+  // Muat jabatan tanpa mewajibkan token
+  useEffect(() => {
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    fetch(`${API_URL}/jabatan?limit=200`, { headers })
+      .then(r => r.json().catch(() => ({})))
+      .then(d => {
+        const arr = Array.isArray(d?.data) ? d.data : Array.isArray(d) ? d : Array.isArray(d?.jabatan) ? d.jabatan : [];
+        if (Array.isArray(arr)) setJabatans(arr.map((x: any) => ({ id: x.id, name: x.name })));
+      })
+      .catch(() => {});
+  }, [token]);
+
+  // Sinkronisasi selectedJabatanId dengan nama jabatan user saat data tersedia
+  useEffect(() => {
+    if (user && jabatans.length > 0) {
+      const found = jabatans.find(j => j.name === user.jabatan);
+      setSelectedJabatanId(found ? String(found.id) : "");
+    }
+  }, [user, jabatans]);
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,8 +73,8 @@ export default function EditUserPage() {
         body: JSON.stringify({
           nama: user.nama,
           email: user.email,
-          jabatan: user.jabatan,
-          status: user.status,
+          jabatan_id: selectedJabatanId ? Number(selectedJabatanId) : undefined,
+          active: user.status === "Aktif",
         }),
       });
       const data = await res.json();
@@ -119,92 +137,48 @@ export default function EditUserPage() {
 >
   {/* === Input Grid === */}
   {/* === Data Diri === */}
-<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
   {/* Nama */}
-  <div className="relative z-0">
-    <input
-      type="text"
-      id="nama"
-      value={user.nama}
-      onChange={(e) => setUser({ ...(user as User), nama: e.target.value })}
-      placeholder=" "
-      autoComplete="off"
-      className="peer block w-full px-3 pb-2.5 pt-5 text-sm text-gray-900 bg-white rounded-lg border border-gray-300 appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-      required
-    />
-    <label
-      htmlFor="nama"
-      className="absolute text-sm text-gray-500 duration-300 transform -translate-y-4 scale-75 top-3 left-3 z-10 origin-[0] bg-white px-1
-      peer-placeholder-shown:translate-y-2 peer-placeholder-shown:scale-100
-      peer-focus:-translate-y-5 peer-focus:scale-75 peer-focus:text-blue-600"
-    >
-      Nama
-    </label>
-  </div>
+  <FloatingInput
+    id="nama"
+    label="Nama"
+    value={user.nama}
+    onChange={(e) => setUser({ ...(user as User), nama: e.target.value })}
+    required
+  />
 
   {/* Email */}
-  <div className="relative z-0">
-    <input
-      type="email"
-      id="email"
-      value={user.email}
-      onChange={(e) => setUser({ ...(user as User), email: e.target.value })}
-      placeholder=" "
-      autoComplete="off"
-      className="peer block w-full px-3 pb-2.5 pt-5 text-sm text-gray-900 bg-white rounded-lg border border-gray-300 appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-      required
-    />
-    <label
-      htmlFor="email"
-      className="absolute text-sm text-gray-500 duration-300 transform -translate-y-4 scale-75 top-3 left-3 z-10 origin-[0] bg-white px-1
-      peer-placeholder-shown:translate-y-2 peer-placeholder-shown:scale-100
-      peer-focus:-translate-y-5 peer-focus:scale-75 peer-focus:text-blue-600"
-    >
-      Email
-    </label>
-  </div>
+  <FloatingInput
+    id="email"
+    label="Email"
+    type="email"
+    value={user.email}
+    onChange={(e) => setUser({ ...(user as User), email: e.target.value })}
+    required
+  />
 
-  {/* Jabatan */}
-  <div className="relative z-0">
-    <select
-      id="jabatan"
-      value={user.jabatan || ""}
-      onChange={(e) => setUser({ ...(user as User), jabatan: e.target.value })}
-      className="peer block w-full px-3 pb-2.5 pt-5 text-sm text-gray-900 bg-white rounded-lg border border-gray-300 appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-    >
-      <option value="">Pilih Jabatan</option>
-      {jabatans.map(j => (
-        <option key={j.id} value={j.name}>{j.name}</option>
-      ))}
-    </select>
-    <label
-      htmlFor="jabatan"
-      className="absolute text-sm text-gray-500 duration-300 transform -translate-y-4 scale-75 top-3 left-3 z-10 origin-[0] bg-white px-1
-      peer-focus:-translate-y-5 peer-focus:scale-75 peer-focus:text-blue-600"
-    >
-      Jabatan
-    </label>
-  </div>
+  {/* Jabatan (value = ID, label = Nama) */}
+  <FloatingSelect
+    id="jabatan"
+    label="Jabatan"
+    value={selectedJabatanId}
+    onChange={(e) => {
+      const val = e.target.value;
+      setSelectedJabatanId(val);
+      const f = jabatans.find(j => String(j.id) === val);
+      setUser({ ...(user as User), jabatan: f ? f.name : "" });
+    }}
+    options={[{ value: "", label: "Pilih Jabatan" }, ...jabatans.map(j => ({ value: String(j.id), label: j.name }))]}
+  />
 
   {/* Status */}
-  <div className="relative z-0">
-    <select
-      id="status"
-      value={user.status}
-      onChange={(e) => setUser({ ...(user as User), status: e.target.value })}
-      className="peer block w-full px-3 pb-2.5 pt-5 text-sm text-gray-900 bg-white rounded-lg border border-gray-300 appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-    >
-      <option value="Aktif">Aktif</option>
-      <option value="Tidak Aktif">Tidak Aktif</option>
-    </select>
-    <label
-      htmlFor="status"
-      className="absolute text-sm text-gray-500 duration-300 transform -translate-y-4 scale-75 top-3 left-3 z-10 origin-[0] bg-white px-1
-      peer-focus:-translate-y-5 peer-focus:scale-75 peer-focus:text-blue-600"
-    >
-      Status
-    </label>
-  </div>
+  <FloatingSelect
+    id="status"
+    label="Status"
+    value={user.status}
+    onChange={(e) => setUser({ ...(user as User), status: e.target.value })}
+    options={[{ value: "Aktif", label: "Aktif" }, { value: "Tidak Aktif", label: "Tidak Aktif" }]}
+  />
 
   
 </div>
@@ -216,10 +190,7 @@ export default function EditUserPage() {
     <div className="relative"><input placeholder="NISN" className="block w-full px-3 pb-2.5 pt-5 text-sm text-gray-900 bg-white rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500" /><label className="absolute text-xs text-gray-500 -translate-y-4 scale-75 top-3 left-3 bg-white px-1">NISN</label></div>
     <div className="relative"><input placeholder="NIP" className="block w-full px-3 pb-2.5 pt-5 text-sm text-gray-900 bg-white rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500" /><label className="absolute text-xs text-gray-500 -translate-y-4 scale-75 top-3 left-3 bg-white px-1">NIP</label></div>
     <div className="relative"><input placeholder="Tempat Lahir" className="block w-full px-3 pb-2.5 pt-5 text-sm text-gray-900 bg-white rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500" /><label className="absolute text-xs text-gray-500 -translate-y-4 scale-75 top-3 left-3 bg-white px-1">Tempat Lahir</label></div>
-          <div className="relative">
-            {/* Flowbite Datepicker untuk tanggal lahir */}
-            <Datepicker className="w-full" />
-          </div>
+          <FloatingDatepicker id="tanggal_lahir" label="Tanggal Lahir" />
     <div className="relative"><select className="block w-full px-3 pb-2.5 pt-5 text-sm text-gray-900 bg-white rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"><option value="">Pilih</option><option>Laki-laki</option><option>Perempuan</option></select><label className="absolute text-xs text-gray-500 -translate-y-4 scale-75 top-3 left-3 bg-white px-1">Jenis Kelamin</label></div>
     <div className="relative"><input placeholder="Agama" className="block w-full px-3 pb-2.5 pt-5 text-sm text-gray-900 bg-white rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500" /><label className="absolute text-xs text-gray-500 -translate-y-4 scale-75 top-3 left-3 bg-white px-1">Agama</label></div>
     <div className="relative md:col-span-2"><input placeholder="Alamat" className="block w-full px-3 pb-2.5 pt-5 text-sm text-gray-900 bg-white rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500" /><label className="absolute text-xs text-gray-500 -translate-y-4 scale-75 top-3 left-3 bg-white px-1">Alamat</label></div>

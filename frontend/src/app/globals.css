@@ -1,8 +1,124 @@
 @import "tailwindcss";
 
+/* Tambahkan sumber konten agar Tailwind memindai komponen Flowbite & Datepicker */
+@source "../**/*.{ts,tsx,js,jsx}";
+@source "../../node_modules/flowbite/**/*.js";
+@source "../../node_modules/flowbite-datepicker/**/*.js";
+
+/* Override gaya Datepicker agar background putih & teks hitam */
+.datepicker,
+.datepicker-dropdown,
+.datepicker-picker {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+}
+.datepicker-dropdown *,
+.datepicker-picker * {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+}
+.dark .datepicker,
+.dark .datepicker-dropdown,
+.dark .datepicker-picker {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+}
+.datepicker .datepicker-header,
+.datepicker .datepicker-controls,
+.datepicker .datepicker-view,
+.datepicker .datepicker-title {
+  color: #000000 !important;
+}
+.datepicker .datepicker-cell {
+  color: #000000 !important;
+}
+.dark .datepicker .datepicker-cell {
+  color: #000000 !important;
+}
+.datepicker .datepicker-cell.selected,
+.datepicker .datepicker-cell.focused {
+  background-color: #2563eb !important; /* blue-600 */
+  color: #ffffff !important;
+}
+
+/* Tambahan penegasan agar kelas bawaan dark tidak menggelapkan datepicker */
+.dark .datepicker-dropdown *,
+.dark .datepicker-picker *,
+.dark .datepicker * {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+}
+.dark .datepicker-dropdown {
+  border-color: #e5e7eb !important; /* gray-200 */
+}
+.datepicker-dropdown {
+  border: 1px solid #e5e7eb !important;
+}
+
+/* Perkuat header/controls datepicker agar tetap putih terang */
+.datepicker-dropdown .datepicker-header,
+.datepicker-dropdown .datepicker-title,
+.datepicker-dropdown .datepicker-controls {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+}
+.datepicker-controls .button,
+.datepicker-header .datepicker-controls .button {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  border-color: #e5e7eb !important; /* gray-200 */
+  box-shadow: none !important;
+}
+.datepicker-header .datepicker-controls .button:hover,
+.datepicker-header .datepicker-controls .button:active,
+.datepicker-controls .button:hover,
+.datepicker-controls .button:active {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  border-color: #d1d5db !important; /* gray-300 */
+  box-shadow: none !important;
+}
+.datepicker-dropdown .datepicker-controls button,
+.datepicker-dropdown .prev-btn,
+.datepicker-dropdown .next-btn,
+.datepicker-dropdown .datepicker-controls svg {
+  color: #000000 !important;
+  fill: #000000 !important;
+}
+
+/* Pastikan input date selalu putih */
+input[type="date"],
+.datepicker-input,
+input[data-datepickr],
+input[data-datepicker] {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  border-color: #e5e7eb !important;
+}
+
+/* Footer dan divider tetap terang */
+.datepicker-dropdown .datepicker-footer,
+.datepicker-dropdown .datepicker-main,
+.datepicker-dropdown hr {
+  background-color: #ffffff !important;
+  border-color: #e5e7eb !important;
+}
+.datepicker-cell:not(.disabled):hover,
+.datepicker-cell.focused:not(.selected),
+.datepicker-cell.highlighted:not(.selected):not(.range):not(.today) {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  outline: 1px solid #e5e7eb !important;
+}
+.datepicker-view .week,
+.datepicker-view .dow {
+  color: #000000 !important;
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  color-scheme: light;
 }
 
 @theme inline {
@@ -14,8 +130,9 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #ffffff;
+    --foreground: #171717;
+    color-scheme: light;
   }
 }
 
@@ -24,6 +141,16 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Jika ada class .dark, tetap gunakan tema putih */
+.dark body {
+  --background: #ffffff;
+  --foreground: #171717;
+  color-scheme: light;
+  background: var(--background) !important;
+  color: var(--foreground) !important;
+}
+
 
 /* Pastikan teks ketika mengetik selalu hitam di semua form */
 input, textarea, select {

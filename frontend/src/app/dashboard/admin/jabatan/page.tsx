@@ -5,7 +5,7 @@ import { confirmDelete, error, success, warn } from "@/lib/alerts";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
-type Jabatan = { id: number; name: string; description?: string; created_at?: string; updated_at?: string | null };
+type Jabatan = { id: number; name: string };
 
 export default function JabatanPage() {
   const [items, setItems] = useState<Jabatan[]>([]);
@@ -17,36 +17,44 @@ export default function JabatanPage() {
   const [pages, setPages] = useState(0);
   const [mode, setMode] = useState<"add"|"edit"|null>(null);
   const [editingId, setEditingId] = useState<number|null>(null);
-  const [form, setForm] = useState<{name:string; description:string}>({ name: "", description: "" });
+  const [form, setForm] = useState<{name:string}>({ name: "" });
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
   const load = () => {
-    if (!token) return;
+    const tok = typeof window !== "undefined" ? localStorage.getItem("token") : null;
     setLoading(true);
-    const qs = query ? `&q=${encodeURIComponent(query)}` : "";
-    fetch(`${API_URL}/jabatan?page=${page}&limit=${limit}${qs}`, { headers: { Authorization: `Bearer ${token}` }})
-      .then(r=>r.json().catch(()=>({})))
-      .then(d=>{
-        setItems(Array.isArray(d.data) ? d.data : []);
-        const meta = d?.meta || {};
-        if (typeof meta.total === 'number') setTotal(meta.total);
-        if (typeof meta.pages === 'number') setPages(meta.pages);
+    if (!tok) { setLoading(false); warn("Autentikasi", "Token tidak ditemukan, silakan login kembali"); return; }
+    fetch(`${API_URL}/jabatan`, { headers: { Authorization: `Bearer ${tok}` }})
+      .then(r=>r.json().catch(()=>[]))
+      .then((arr)=>{
+        const all: Jabatan[] = Array.isArray(arr) ? arr : [];
+        const filtered = query.trim() ? all.filter(i => i.name?.toLowerCase().includes(query.trim().toLowerCase())) : all;
+        setTotal(filtered.length);
+        const pgs = Math.max(1, Math.ceil(filtered.length / limit));
+        setPages(pgs);
+        const start = (page - 1) * limit;
+        setItems(filtered.slice(start, start + limit));
       })
       .finally(()=>setLoading(false));
   };
 
   useEffect(()=>{ load(); /* eslint-disable-next-line */ }, [page, limit, query]);
 
-  const resetForm = () => { setForm({ name: "", description: "" }); setMode(null); setEditingId(null); };
+  const resetForm = () => { setForm({ name: "" }); setMode(null); setEditingId(null); };
 
   const onSave = async () => {
-    if (!token) return;
-    const payload = { name: form.name.trim(), description: form.description.trim() };
+    const tok = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    if (!tok) { return warn("Autentikasi", "Token tidak ditemukan, silakan login kembali"); }
+    const payload = { name: form.name.trim() };
     if (!payload.name) return warn("Validasi", "Nama Jabatan wajib");
+    // Client-side duplicate check (case-insensitive)
+    const existsLocal = items.some(i => i.name?.toLowerCase() === payload.name.toLowerCase() && (mode !== 'edit' || i.id !== editingId));
+    if (existsLocal) return warn("Validasi", "Nama Jabatan sudah ada");
     let url = `${API_URL}/jabatan`; let method = "POST";
     if (mode === "edit" && editingId) { url = `${API_URL}/jabatan/${editingId}`; method = "PUT"; }
-    const res = await fetch(url, { method, headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(payload) });
+    const res = await fetch(url, { method, headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` }, body: JSON.stringify(payload) });
     const data = await res.json().catch(()=>({}));
+    if (res.status === 409) return warn("Validasi", data?.error || "Nama Jabatan sudah ada");
     if (!res.ok) return error("Gagal", data?.error || "Gagal menyimpan");
     success("Berhasil", "Data Jabatan disimpan");
     resetForm();
@@ -54,7 +62,7 @@ export default function JabatanPage() {
   };
 
   const startEdit = (it: Jabatan) => {
-    setMode("edit"); setEditingId(it.id); setForm({ name: it.name || "", description: it.description || "" });
+    setMode("edit"); setEditingId(it.id); setForm({ name: it.name || "" });
   };
   const remove = async (it: Jabatan) => {
     const ok = await confirmDelete("Hapus Jabatan?", it.name, "Ya, hapus");
@@ -85,9 +93,6 @@ export default function JabatanPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="relative">
                 <input value={form.name} onChange={e=>setForm(f=>({ ...f, name: e.target.value }))} className="peer px-3 py-3 rounded-lg border border-gray-300 text-sm text-black bg-white w-full placeholder-transparent normal-case" placeholder="Nama" />
-              </div>
-              <div className="relative md:col-span-2">
-                <input value={form.description} onChange={e=>setForm(f=>({ ...f, description: e.target.value }))} className="peer px-3 py-3 rounded-lg border border-gray-300 text-sm text-black bg-white w-full placeholder-transparent" placeholder="Deskripsi" />
               </div>
             </div>
             <div className="mt-3 flex items-center gap-2">
@@ -126,7 +131,6 @@ export default function JabatanPage() {
                 <thead>
                   <tr className="text-left text-black">
                     <th className="py-2">Nama</th>
-                    <th className="py-2">Deskripsi</th>
                     <th className="py-2">Aksi</th>
                   </tr>
                 </thead>
@@ -134,7 +138,6 @@ export default function JabatanPage() {
                   {items.map(it=> (
                     <tr key={it.id} className="border-t border-gray-100">
                       <td className="py-2 text-black normal-case">{it.name}</td>
-                      <td className="py-2 text-black">{it.description || '-'}</td>
                       <td className="py-2">
                         <div className="flex items-center gap-2">
                           <button onClick={()=>startEdit(it)} className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-indigo-600 text-white text-sm">Edit</button>

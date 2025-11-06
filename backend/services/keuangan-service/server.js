@@ -11,20 +11,63 @@ app.use(morgan('dev'));
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 async function initDb() {
+  // Ensure base tables exist with richer schemas compatible with frontend needs
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS payment (id SERIAL PRIMARY KEY, amount NUMERIC);
-    CREATE TABLE IF NOT EXISTS kas (id SERIAL PRIMARY KEY, saldo NUMERIC);
-    CREATE TABLE IF NOT EXISTS arus (id SERIAL PRIMARY KEY, tanggal DATE, tipe TEXT, jumlah NUMERIC);
-    CREATE TABLE IF NOT EXISTS keluar (id SERIAL PRIMARY KEY, jumlah NUMERIC);
-    CREATE TABLE IF NOT EXISTS masuk (id SERIAL PRIMARY KEY, jumlah NUMERIC);
-    CREATE TABLE IF NOT EXISTS rekening (id SERIAL PRIMARY KEY, bank TEXT, nomor TEXT);
+    CREATE TABLE IF NOT EXISTS payment (
+      id SERIAL PRIMARY KEY,
+      amount NUMERIC
+    );
+
+    CREATE TABLE IF NOT EXISTS kas (
+      id SERIAL PRIMARY KEY,
+      saldo NUMERIC
+    );
+
+    CREATE TABLE IF NOT EXISTS arus (
+      id SERIAL PRIMARY KEY,
+      tanggal TIMESTAMP,
+      tipe TEXT,
+      jumlah NUMERIC
+    );
+
+    CREATE TABLE IF NOT EXISTS keluar (
+      id SERIAL PRIMARY KEY,
+      tanggal TIMESTAMP DEFAULT NOW(),
+      jumlah NUMERIC,
+      keterangan TEXT,
+      rekening_id INT
+    );
+
+    CREATE TABLE IF NOT EXISTS masuk (
+      id SERIAL PRIMARY KEY,
+      tanggal TIMESTAMP DEFAULT NOW(),
+      jumlah NUMERIC,
+      keterangan TEXT,
+      rekening_id INT
+    );
+
+    CREATE TABLE IF NOT EXISTS rekening (
+      id SERIAL PRIMARY KEY,
+      bank TEXT,
+      nomor TEXT
+    );
   `);
+
+  // Add missing columns if the tables were created previously with simpler schemas
+  await pool.query(`ALTER TABLE IF EXISTS keluar ADD COLUMN IF NOT EXISTS tanggal TIMESTAMP DEFAULT NOW();`);
+  await pool.query(`ALTER TABLE IF EXISTS keluar ADD COLUMN IF NOT EXISTS keterangan TEXT;`);
+  await pool.query(`ALTER TABLE IF EXISTS keluar ADD COLUMN IF NOT EXISTS rekening_id INT;`);
+  await pool.query(`ALTER TABLE IF EXISTS masuk ADD COLUMN IF NOT EXISTS tanggal TIMESTAMP DEFAULT NOW();`);
+  await pool.query(`ALTER TABLE IF EXISTS masuk ADD COLUMN IF NOT EXISTS keterangan TEXT;`);
+  await pool.query(`ALTER TABLE IF EXISTS masuk ADD COLUMN IF NOT EXISTS rekening_id INT;`);
+
+  // Seed minimal demo data if empty
   const seeds = [
     ['payment', 'amount', 100000],
     ['kas', 'saldo', 500000],
-    ['arus', ['tanggal', 'tipe', 'jumlah'], ['2024-01-01', 'masuk', 100000]],
-    ['keluar', 'jumlah', 50000],
-    ['masuk', 'jumlah', 150000],
+    ['arus', ['tanggal', 'tipe', 'jumlah'], [new Date().toISOString(), 'masuk', 100000]],
+    ['keluar', ['jumlah', 'keterangan'], [50000, 'Pengeluaran awal']],
+    ['masuk', ['jumlah', 'keterangan'], [150000, 'Pemasukan awal']],
     ['rekening', ['bank', 'nomor'], ['BCA', '123-456']]
   ];
   for (const s of seeds) {
@@ -51,7 +94,45 @@ app.get('/payment', async (req, res) => { const { rows } = await pool.query('SEL
 app.post('/payment', async (req, res) => { const { amount } = req.body || {}; if (amount == null) return res.status(400).json({ error: 'amount required' }); const { rows } = await pool.query('INSERT INTO payment(amount) VALUES ($1) RETURNING id, amount', [amount]); res.status(201).json(rows[0]); });
 app.put('/payment/:id', async (req, res) => { const id = Number(req.params.id); const { amount } = req.body || {}; const { rows } = await pool.query('UPDATE payment SET amount=COALESCE($1,amount) WHERE id=$2 RETURNING id, amount', [amount, id]); if (!rows[0]) return res.status(404).json({ error: 'not found' }); res.json(rows[0]); });
 app.delete('/payment/:id', async (req, res) => { const id = Number(req.params.id); const { rowCount } = await pool.query('DELETE FROM payment WHERE id=$1', [id]); if (!rowCount) return res.status(404).json({ error: 'not found' }); res.json({ ok: true }); });
-app.get('/kas', async (req, res) => { const { rows } = await pool.query('SELECT id, saldo FROM kas ORDER BY id'); res.json(rows); });
+// Kas ledger: combine MASUK & KELUAR with pagination and optional search
+app.get('/kas', async (req, res) => {
+  try {
+    const jenis = (req.query.jenis || '').toString().toUpperCase();
+    const page = Math.max(1, parseInt((req.query.page || '1').toString(), 10));
+    const limit = Math.max(1, parseInt((req.query.limit || '10').toString(), 10));
+    const q = (req.query.q || '').toString().trim();
+
+    let rows = [];
+    if (jenis === 'MASUK') {
+      const r = await pool.query('SELECT id, tanggal, jumlah, COALESCE(keterangan, \'\') AS keterangan, COALESCE(rekening_id, NULL) AS rekening_id FROM masuk ORDER BY tanggal DESC, id DESC');
+      rows = r.rows.map(x => ({ ...x, jenis: 'MASUK' }));
+    } else if (jenis === 'KELUAR') {
+      const r = await pool.query('SELECT id, tanggal, jumlah, COALESCE(keterangan, \'\') AS keterangan, COALESCE(rekening_id, NULL) AS rekening_id FROM keluar ORDER BY tanggal DESC, id DESC');
+      rows = r.rows.map(x => ({ ...x, jenis: 'KELUAR' }));
+    } else {
+      const rMasuk = await pool.query('SELECT id, tanggal, jumlah, COALESCE(keterangan, \'\') AS keterangan, COALESCE(rekening_id, NULL) AS rekening_id FROM masuk');
+      const rKeluar = await pool.query('SELECT id, tanggal, jumlah, COALESCE(keterangan, \'\') AS keterangan, COALESCE(rekening_id, NULL) AS rekening_id FROM keluar');
+      rows = [
+        ...rMasuk.rows.map(x => ({ ...x, jenis: 'MASUK' })),
+        ...rKeluar.rows.map(x => ({ ...x, jenis: 'KELUAR' })),
+      ].sort((a, b) => new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime() || b.id - a.id);
+    }
+
+    // simple search by keterangan
+    if (q) {
+      const qLower = q.toLowerCase();
+      rows = rows.filter(x => (x.keterangan || '').toLowerCase().includes(qLower));
+    }
+
+    const total = rows.length;
+    const pages = Math.max(1, Math.ceil(total / limit));
+    const start = (page - 1) * limit;
+    const data = rows.slice(start, start + limit);
+    res.json({ data, meta: { total, pages, page, limit } });
+  } catch (e) {
+    res.status(500).json({ error: e.message || 'server_error' });
+  }
+});
 app.get('/arus', async (req, res) => { const { rows } = await pool.query('SELECT tanggal, tipe, jumlah FROM arus ORDER BY tanggal'); res.json(rows); });
 app.get('/keluar', async (req, res) => { const { rows } = await pool.query('SELECT id, jumlah FROM keluar ORDER BY id'); res.json(rows); });
 app.get('/masuk', async (req, res) => { const { rows } = await pool.query('SELECT id, jumlah FROM masuk ORDER BY id'); res.json(rows); });
@@ -59,6 +140,27 @@ app.get('/rekening', async (req, res) => { const { rows } = await pool.query('SE
 app.post('/rekening', async (req, res) => { const { bank, nomor } = req.body || {}; if (!bank || !nomor) return res.status(400).json({ error: 'bank and nomor required' }); const { rows } = await pool.query('INSERT INTO rekening(bank, nomor) VALUES ($1, $2) RETURNING id, bank, nomor', [bank, nomor]); res.status(201).json(rows[0]); });
 app.put('/rekening/:id', async (req, res) => { const id = Number(req.params.id); const { bank, nomor } = req.body || {}; const { rows } = await pool.query('UPDATE rekening SET bank=COALESCE($1,bank), nomor=COALESCE($2,nomor) WHERE id=$3 RETURNING id, bank, nomor', [bank, nomor, id]); if (!rows[0]) return res.status(404).json({ error: 'not found' }); res.json(rows[0]); });
 app.delete('/rekening/:id', async (req, res) => { const id = Number(req.params.id); const { rowCount } = await pool.query('DELETE FROM rekening WHERE id=$1', [id]); if (!rowCount) return res.status(404).json({ error: 'not found' }); res.json({ ok: true }); });
+
+// Create ledger entries via unified /kas endpoint
+app.post('/kas', async (req, res) => {
+  try {
+    const { jenis, tanggal, jumlah, keterangan, rekening_id } = req.body || {};
+    const j = (jenis || '').toString().toUpperCase();
+    if (!['MASUK','KELUAR'].includes(j)) return res.status(400).json({ error: 'jenis must be MASUK or KELUAR' });
+    const amt = Number(jumlah);
+    if (!isFinite(amt) || amt <= 0) return res.status(400).json({ error: 'jumlah must be a positive number' });
+    const t = tanggal ? new Date(tanggal) : new Date();
+    const table = j === 'MASUK' ? 'masuk' : 'keluar';
+    const { rows } = await pool.query(
+      `INSERT INTO ${table} (tanggal, jumlah, keterangan, rekening_id) VALUES ($1, $2, $3, $4) RETURNING id, tanggal, jumlah, COALESCE(keterangan,'') AS keterangan, COALESCE(rekening_id,NULL) AS rekening_id`,
+      [t.toISOString(), amt, keterangan || null, typeof rekening_id === 'number' ? rekening_id : null]
+    );
+    const out = rows[0];
+    res.status(201).json({ ...out, jenis: j });
+  } catch (e) {
+    res.status(500).json({ error: e.message || 'server_error' });
+  }
+});
 
 const port = process.env.SERVICE_PORT || 3000;
 initDb()

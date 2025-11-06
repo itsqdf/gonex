@@ -62,7 +62,7 @@ export default function KasKeluarPage() {
     if (!token) return;
     fetch(`${API_URL}/rekening`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r=>r.json().catch(()=>({})))
-      .then(d=>{ if (Array.isArray(d.data)) setRekList(d.data); })
+      .then(d=>{ const arr = Array.isArray(d?.data) ? d.data : (Array.isArray(d) ? d : []); setRekList(arr); })
       .catch(()=>{});
   }, []);
 

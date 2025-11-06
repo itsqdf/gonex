@@ -45,6 +45,7 @@ export default function DataTable<T extends { id: number | string }>({
   const [limit, setLimit] = useState(10);
   const [total, setTotal] = useState(0);
   const [pages, setPages] = useState(0);
+  const [hasMeta, setHasMeta] = useState(false);
 
   const loadData = async () => {
     try {
@@ -62,11 +63,13 @@ export default function DataTable<T extends { id: number | string }>({
         items = response.data as T[];
         metaTotal = response?.meta?.total ?? items.length;
         metaPages = response?.meta?.pages ?? Math.max(1, Math.ceil(metaTotal / limit));
+        setHasMeta(!!response?.meta);
       } else if (Array.isArray(response)) {
         // Direct array response
         items = response as T[];
         metaTotal = items.length;
         metaPages = Math.max(1, Math.ceil(metaTotal / limit));
+        setHasMeta(false);
       } else if (response && typeof response === 'object') {
         // Try common plural keys
         const possibleKeys = ['roles', 'permissions', 'users', 'items', 'data', 'jabatans', 'jabatan'];
@@ -75,11 +78,13 @@ export default function DataTable<T extends { id: number | string }>({
           items = response[keyWithArray] as T[];
           metaTotal = response?.meta?.total ?? items.length;
           metaPages = response?.meta?.pages ?? Math.max(1, Math.ceil(metaTotal / limit));
+          setHasMeta(!!response?.meta);
         } else {
           // Fallback: no recognizable array -> empty
           items = [];
           metaTotal = 0;
           metaPages = 0;
+          setHasMeta(false);
         }
       }
 
@@ -132,13 +137,32 @@ export default function DataTable<T extends { id: number | string }>({
     return value?.toString() || '';
   };
 
+  // Client-side filtering and pagination fallback when server doesn't provide meta
+  const normalize = (v: any) => (v == null ? '' : String(v)).toLowerCase();
+  const q = search.trim().toLowerCase();
+  const matchesSearch = (item: T) => {
+    if (!q) return true;
+    return columns.some((col) => {
+      const key = col.key as string;
+      const val = (item as any)[key];
+      return normalize(val).includes(q);
+    });
+  };
+
+  const filteredData = hasMeta ? data : data.filter(matchesSearch);
+  const totalCount = hasMeta ? total : filteredData.length;
+  const totalPages = hasMeta ? pages : Math.max(1, Math.ceil(totalCount / limit));
+  const start = (page - 1) * limit;
+  const end = start + limit;
+  const visibleData = hasMeta ? data : filteredData.slice(start, end);
+
   return (
     <div className={`bg-white rounded-lg shadow-sm border ${className}`}>
       {/* Header */}
       <div className="p-6 border-b border-gray-200">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <form onSubmit={handleSearch} className="flex-1 max-w-md">
-            <div className="relative">
+          <form onSubmit={handleSearch} className="flex-1 max-w-md flex items-center gap-2">
+            <div className="relative flex-1">
               <input
                 type="text"
                 value={search}
@@ -152,6 +176,7 @@ export default function DataTable<T extends { id: number | string }>({
                 </svg>
               </div>
             </div>
+            <button type="submit" className="px-4 py-2 rounded-lg border border-gray-300 bg-white text-black hover:bg-gray-50">Cari</button>
           </form>
           
           <div className="flex items-center gap-2">
@@ -222,7 +247,7 @@ export default function DataTable<T extends { id: number | string }>({
                 </td>
               </tr>
             ) : (
-              data.map((item, index) => (
+              visibleData.map((item, index) => (
                 <tr key={item.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                   {columns.map((column, colIndex) => (
                     <td key={colIndex} className="px-6 py-4 whitespace-nowrap text-sm text-black">
@@ -255,11 +280,11 @@ export default function DataTable<T extends { id: number | string }>({
       </div>
 
       {/* Pagination */}
-      {pages > 1 && (
+      {totalPages > 1 && (
         <div className="px-6 py-3 border-t border-gray-200 bg-gray-50">
           <div className="flex items-center justify-between">
             <div className="text-sm text-black">
-              Menampilkan {((page - 1) * limit) + 1} - {Math.min(page * limit, total)} dari {total} data
+              Menampilkan {((page - 1) * limit) + 1} - {Math.min(page * limit, totalCount)} dari {totalCount} data
             </div>
             <div className="flex gap-2">
               <Button onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1} color="gray" outline size="sm" className="inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
@@ -267,9 +292,9 @@ export default function DataTable<T extends { id: number | string }>({
                 <span>Prev</span>
               </Button>
               <span className="px-3 py-1 text-sm bg-white text-black rounded border">
-                {page} / {pages}
+                {page} / {totalPages}
               </span>
-              <Button onClick={() => setPage(Math.min(pages, page + 1))} disabled={page === pages} color="gray" outline size="sm" className="inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+              <Button onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page === totalPages} color="gray" outline size="sm" className="inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
                 <span>Next</span>
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path d="M8.3 18.7a1 1 0 0 1 0-1.4L12.6 13 8.3 8.7a1 1 0 0 1 1.4-1.4l5 5a1 1 0 0 1 0 1.4l-5 5a1 1 0 0 1-1.4 0Z"/></svg>
               </Button>
