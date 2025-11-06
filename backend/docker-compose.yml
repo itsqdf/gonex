@@ -1,0 +1,139 @@
+services:
+  gateway:
+    build: ./gateway
+    ports:
+      - "8080:8080"
+    depends_on:
+      - auth-user-service
+      - setting-service
+      - produk-service
+      - keuangan-service
+      - client-service
+      - delete-service
+
+  auth-user-service:
+    build: ./services/auth-user-service-go
+    environment:
+      - SERVICE_PORT=3000
+      - DATABASE_URL=postgres://root:armagedon25@auth-user-db:5432/auth_db
+      - JWT_SECRET=supersecretjwt
+    depends_on:
+      - auth-user-db
+
+  setting-service:
+    build: ./services/setting-service
+    environment:
+      - SERVICE_PORT=3000
+      - DATABASE_URL=postgres://root:armagedon25@setting-db:5432/setting_db
+    depends_on:
+      - setting-db
+
+  produk-service:
+    build: ./services/produk-service
+    environment:
+      - SERVICE_PORT=3000
+      - DATABASE_URL=postgres://root:armagedon25@produk-db:5432/produk_db
+    depends_on:
+      - produk-db
+
+  keuangan-service:
+    build: ./services/keuangan-service
+    environment:
+      - SERVICE_PORT=3000
+      - DATABASE_URL=postgres://root:armagedon25@keuangan-db:5432/keuangan_db
+    depends_on:
+      - keuangan-db
+
+  client-service:
+    build: ./services/client-service
+    environment:
+      - SERVICE_PORT=3000
+      - DATABASE_URL=postgres://root:armagedon25@client-db:5432/client_db
+    depends_on:
+      - client-db
+
+  delete-service:
+    build: ./services/delete-service
+    environment:
+      - SERVICE_PORT=3000
+      - DATABASE_URL=postgres://root:armagedon25@delete-db:5432/delete_db
+    depends_on:
+      - delete-db
+
+  auth-user-db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=auth_db
+      - POSTGRES_USER=root
+      - POSTGRES_PASSWORD=armagedon25
+    volumes:
+      - auth_user_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+
+  setting-db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=setting_db
+      - POSTGRES_USER=root
+      - POSTGRES_PASSWORD=armagedon25
+    volumes:
+      - setting_data:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"
+
+  produk-db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=produk_db
+      - POSTGRES_USER=root
+      - POSTGRES_PASSWORD=armagedon25
+    volumes:
+      - produk_data:/var/lib/postgresql/data
+    ports:
+      - "5435:5432"
+
+  keuangan-db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=keuangan_db
+      - POSTGRES_USER=root
+      - POSTGRES_PASSWORD=armagedon25
+    volumes:
+      - keuangan_data:/var/lib/postgresql/data
+    ports:
+      - "5436:5432"
+
+  client-db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=client_db
+      - POSTGRES_USER=root
+      - POSTGRES_PASSWORD=armagedon25
+    volumes:
+      - client_data:/var/lib/postgresql/data
+    ports:
+      - "5437:5432"
+
+  delete-db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=delete_db
+      - POSTGRES_USER=root
+      - POSTGRES_PASSWORD=armagedon25
+    volumes:
+      - delete_data:/var/lib/postgresql/data
+    ports:
+      - "5438:5432"
+
+networks:
+  default:
+    name: gonex-net
+
+volumes:
+  auth_user_data:
+  setting_data:
+  produk_data:
+  keuangan_data:
+  client_data:
+  delete_data:

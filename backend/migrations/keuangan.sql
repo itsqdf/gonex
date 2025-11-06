@@ -1,0 +1,47 @@
+-- Keuangan Service schema and seed
+CREATE TABLE IF NOT EXISTS payment (
+  id SERIAL PRIMARY KEY,
+  method TEXT NOT NULL,
+  amount NUMERIC(14,2) NOT NULL,
+  status TEXT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS kas (
+  id SERIAL PRIMARY KEY,
+  balance NUMERIC(14,2) NOT NULL DEFAULT 0,
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS arus (
+  id SERIAL PRIMARY KEY,
+  description TEXT,
+  amount NUMERIC(14,2) NOT NULL,
+  type TEXT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS keluar (
+  id SERIAL PRIMARY KEY,
+  description TEXT,
+  amount NUMERIC(14,2) NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS masuk (
+  id SERIAL PRIMARY KEY,
+  description TEXT,
+  amount NUMERIC(14,2) NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS rekening (
+  id SERIAL PRIMARY KEY,
+  bank TEXT NOT NULL,
+  number TEXT UNIQUE NOT NULL,
+  name TEXT NOT NULL
+);
+
+INSERT INTO kas(balance) VALUES (1000000) ON CONFLICT DO NOTHING;
+INSERT INTO rekening(bank, number, name) VALUES ('BCA', '1234567890', 'Perusahaan A') ON CONFLICT DO NOTHING;
+INSERT INTO payment(method, amount, status) VALUES ('transfer', 250000, 'completed') ON CONFLICT DO NOTHING;
