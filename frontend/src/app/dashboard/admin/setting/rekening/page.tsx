@@ -74,8 +74,15 @@ export default function RekeningPage() {
   const createItem = async () => {
     if (!token) return;
     try {
-      // Backend saat ini menerima { bank, nomor }
-      const payload = { bank: nama, nomor };
+      // Kirim field lengkap agar backend menyimpan secara kaya
+      const payload = {
+        kode: kode || undefined,
+        nama,
+        jenis,
+        nomor: nomor || undefined,
+        atas_nama: atasNama || undefined,
+        saldo: saldo ? Number(saldo) : 0,
+      };
       const res = await fetch(`${API_URL}/rekening`, {
         method: "POST",
         headers,
@@ -98,8 +105,15 @@ export default function RekeningPage() {
   const saveEdit = async (it: any) => {
     if (!token) return;
     try {
-      // Backend saat ini menerima { bank, nomor }
-      const payload = { bank: it._nama || it.nama, nomor: it._nomor || it.nomor };
+      // Kirim field lengkap saat menyimpan
+      const payload = {
+        kode: it._kode ?? it.kode ?? undefined,
+        nama: it._nama ?? it.nama ?? undefined,
+        jenis: it._jenis ?? it.jenis ?? undefined,
+        nomor: it._nomor ?? it.nomor ?? undefined,
+        atas_nama: it._atas_nama ?? it.atas_nama ?? undefined,
+        saldo: it._saldo != null ? Number(it._saldo) : it.saldo,
+      };
       const res = await fetch(`${API_URL}/rekening/${it.id}`, {
         method: "PUT",
         headers,

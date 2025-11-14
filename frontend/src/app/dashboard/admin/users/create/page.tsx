@@ -22,8 +22,7 @@ export default function CreateUserPage() {
   });
   const [saving, setSaving] = useState(false);
   const [jabatans, setJabatans] = useState<{ id:number; name:string }[]>([]);
-  const [roles, setRoles] = useState<{ id:number; name:string }[]>([]);
-  const [selectedRole, setSelectedRole] = useState<string>("");
+  // Roles tidak dipilih di form ini; penugasan roles dilakukan via user-roles.
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
@@ -41,38 +40,27 @@ export default function CreateUserPage() {
   }, [token]);
 
   // Muat daftar Roles (wajib pilih salah satu)
-  useEffect(() => {
-    const headers: Record<string, string> = {};
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-    fetch(`${API_URL}/roles`, { headers })
-      .then(r => r.json().catch(() => ([])))
-      .then((arr) => {
-        const list = Array.isArray(arr) ? arr : Array.isArray(arr?.data) ? arr.data : [];
-        const mapped = list.map((x: any) => ({ id: x.id ?? 0, name: x.name ?? String(x) }));
-        setRoles(mapped);
-      })
-      .catch(() => {});
-  }, [token]);
+  // Tidak perlu memuat roles di halaman tambah user.
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!token) return;
-    if (!form.nama.trim() || !form.email.trim() || !form.password.trim() || !selectedRole.trim()) {
-      Swal.fire({ title: "Gagal", text: "Nama, email, password, dan role wajib diisi.", icon: "error" });
+    if (!form.nama.trim() || !form.email.trim() || !form.password.trim()) {
+      Swal.fire({ title: "Gagal", text: "Nama, email, dan password wajib diisi.", icon: "error" });
       return;
     }
     setSaving(true);
     try {
       const res = await fetch(`${API_URL}/users`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          ...form,
-          role: selectedRole,
-          active: form.status === "Aktif",
-          username: form.email,
-        }),
-      });
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        ...form,
+        active: form.status === "Aktif",
+        username: form.email,
+        jabatan_id: form.jabatan_id ? Number(form.jabatan_id) : undefined,
+      }),
+    });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Gagal menambah pengguna");
       Swal.fire({ title: "Berhasil", text: "Pengguna ditambahkan", icon: "success" });
@@ -118,6 +106,7 @@ export default function CreateUserPage() {
               type="email"
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
+              autoComplete="off"
               required
             />
 
@@ -128,6 +117,7 @@ export default function CreateUserPage() {
               type="password"
               value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
+              autoComplete="new-password"
               required
             />
 
@@ -151,15 +141,7 @@ export default function CreateUserPage() {
             options={[{ value: "", label: "Pilih Status" }, { value: "Aktif", label: "Aktif" }, { value: "Tidak Aktif", label: "Tidak Aktif" }]}
           />
 
-          {/* Role */}
-          <FloatingSelect
-            id="role"
-            label="Role"
-            value={selectedRole}
-            onChange={(e) => setSelectedRole(e.target.value)}
-            required
-            options={[{ value: "", label: "Pilih Role" }, ...roles.map(r => ({ value: r.name, label: r.name }))]}
-          />
+          {/* Role tidak diisi di form ini; gunakan halaman manajemen roles-user untuk penugasan. */}
 
             {/* Detail Lengkap (pelanggan/konsumen/pegawai/guru/siswa/Dapodik) */}
             <div className="col-span-2 grid grid-cols-2 md:grid-cols-3 gap-3 mt-4">

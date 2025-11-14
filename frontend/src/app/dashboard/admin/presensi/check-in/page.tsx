@@ -16,6 +16,11 @@ export default function PresensiCheckInPage() {
   const [status, setStatus] = useState<TodayStatus | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [coords, setCoords] = useState<{lat:number; lng:number} | null>(null);
+  const [userId, setUserId] = useState<number | null>(null);
+  const [jabatanName, setJabatanName] = useState<string>("");
+  const [methodAllowed, setMethodAllowed] = useState<string | null>(null);
+  const [method, setMethod] = useState<string>("");
+  const [notes, setNotes] = useState<string>("");
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
@@ -36,6 +41,31 @@ export default function PresensiCheckInPage() {
   };
 
   useEffect(() => { loadToday(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  const loadMeAndMethod = async () => {
+    try {
+      const mr = await fetch(`${API_URL}/auth/me`, { headers });
+      const me = await mr.json().catch(()=>({}));
+      const uid = me?.id || me?.user_id || null;
+      if (!uid) return;
+      setUserId(Number(uid));
+      const ur = await fetch(`${API_URL}/users/${uid}`, { headers });
+      const uj = await ur.json().catch(()=>({}));
+      const jname = uj?.user?.jabatan || "";
+      setJabatanName(String(jname));
+      const jr = await fetch(`${API_URL}/jabatan`, { headers });
+      const jl = await jr.json().catch(()=>[]);
+      const j = (Array.isArray(jl) ? jl : []).find((it:any)=> String(it.name) === String(jname));
+      const jpres = await fetch(`${API_URL}/jabatan-presensi`, { headers });
+      const jplist = await jpres.json().catch(()=>[]);
+      const jp = (Array.isArray(jplist) ? jplist : []).find((it:any)=> Number(it.jabatan_id) === Number(j?.id));
+      const allowed = jp ? String(jp.method) : null;
+      setMethodAllowed(allowed);
+      setMethod(allowed || "");
+    } catch {}
+  };
+
+  useEffect(() => { loadMeAndMethod(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   const getLocation = async (): Promise<{lat:number; lng:number} | null> => {
     if (typeof navigator === "undefined" || !navigator.geolocation) return null;
@@ -59,6 +89,8 @@ export default function PresensiCheckInPage() {
       const c = await getLocation();
       const body: any = {};
       if (c) { body.latitude = c.lat; body.longitude = c.lng; }
+      if (methodAllowed) body.method = methodAllowed;
+      if (notes) body.notes = notes;
       const r = await fetch(`${API_URL}/presensi/check-in`, { method: "POST", headers, body: JSON.stringify(body) });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d?.error || `Gagal check-in (${r.status})`);
@@ -96,6 +128,17 @@ export default function PresensiCheckInPage() {
               <p className="text-sm text-gray-700">Tanggal: {status?.date || "-"}</p>
               <p className="text-sm text-gray-700">Check-in: {status?.check_in || "-"}</p>
               <p className="text-sm text-gray-700">Check-out: {status?.check_out || "-"}</p>
+              <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm text-gray-700">Metode</label>
+                  <input value={methodAllowed || ''} readOnly className="px-3 py-2 rounded border w-full bg-gray-100" />
+                  <p className="text-xs text-gray-600 mt-1">Disesuaikan otomatis dari jabatan: {jabatanName || '-'}</p>
+                </div>
+                <div>
+                  <label className="text-sm text-gray-700">Catatan / Alasan</label>
+                  <input value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Opsional" className="px-3 py-2 rounded border w-full" />
+                </div>
+              </div>
             </div>
           )}
           <div className="mt-4 flex items-center gap-2">

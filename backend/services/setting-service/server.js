@@ -49,6 +49,38 @@ async function initDb() {
       id SERIAL PRIMARY KEY,
       name TEXT NOT NULL
     );
+    -- Per-company presensi settings
+    CREATE TABLE IF NOT EXISTS company_presensi_settings (
+      company_id INT PRIMARY KEY,
+      mon BOOLEAN DEFAULT TRUE,
+      tue BOOLEAN DEFAULT TRUE,
+      wed BOOLEAN DEFAULT TRUE,
+      thu BOOLEAN DEFAULT TRUE,
+      fri BOOLEAN DEFAULT TRUE,
+      sat BOOLEAN DEFAULT FALSE,
+      sun BOOLEAN DEFAULT FALSE,
+      allow_free_checkin BOOLEAN DEFAULT FALSE,
+      default_check_in TEXT,
+      default_check_out TEXT
+    );
+    -- Allowed presensi locations per company
+    CREATE TABLE IF NOT EXISTS presensi_locations (
+      id SERIAL PRIMARY KEY,
+      company_id INT NOT NULL,
+      name TEXT NOT NULL,
+      latitude NUMERIC NOT NULL,
+      longitude NUMERIC NOT NULL,
+      radius_m INT NOT NULL DEFAULT 50,
+      active BOOLEAN NOT NULL DEFAULT TRUE
+    );
+    -- Presensi method per jabatan
+    CREATE TABLE IF NOT EXISTS jabatan_presensi (
+      id SERIAL PRIMARY KEY,
+      jabatan_id INT NOT NULL REFERENCES jabatan(id) ON DELETE CASCADE,
+      method TEXT NOT NULL CHECK (method IN ('face','qr','fingerprint')),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      UNIQUE (jabatan_id)
+    );
   `);
   // Unique index to prevent duplicate jabatan names (case-insensitive)
   await pool.query(`
@@ -86,6 +118,13 @@ async function initDb() {
   if (jabCount[0].c === 0) {
     await pool.query(`INSERT INTO jabatan(name) VALUES ($1), ($2)`, ['Manager', 'Staff']);
   }
+
+  // Seed default company presensi settings if missing (company_id=1)
+  await pool.query(`
+    INSERT INTO company_presensi_settings(company_id, mon, tue, wed, thu, fri, sat, sun, allow_free_checkin, default_check_in, default_check_out)
+    SELECT 1, TRUE, TRUE, TRUE, TRUE, TRUE, FALSE, FALSE, FALSE, '09:00', '17:00'
+    WHERE NOT EXISTS (SELECT 1 FROM company_presensi_settings WHERE company_id=1);
+  `);
 }
 
 app.get('/health', async (req, res) => {
@@ -96,6 +135,69 @@ app.get('/health', async (req, res) => {
 app.get('/setting', async (req, res) => {
   const { rows } = await pool.query('SELECT theme, language FROM settings ORDER BY id LIMIT 1');
   res.json(rows[0] || {});
+});
+
+// Company presensi settings CRUD
+app.get('/settings/company/:companyId', async (req, res) => {
+  const companyId = Number(req.params.companyId);
+  const { rows } = await pool.query('SELECT company_id, mon, tue, wed, thu, fri, sat, sun, allow_free_checkin, default_check_in, default_check_out FROM company_presensi_settings WHERE company_id=$1', [companyId]);
+  res.json(rows[0] ? rows[0] : {});
+});
+app.put('/settings/company/:companyId', async (req, res) => {
+  const companyId = Number(req.params.companyId);
+  const b = req.body || {};
+  const r = await pool.query(`
+    INSERT INTO company_presensi_settings(company_id, mon, tue, wed, thu, fri, sat, sun, allow_free_checkin, default_check_in, default_check_out)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+    ON CONFLICT (company_id)
+    DO UPDATE SET mon=EXCLUDED.mon, tue=EXCLUDED.tue, wed=EXCLUDED.wed, thu=EXCLUDED.thu, fri=EXCLUDED.fri, sat=EXCLUDED.sat, sun=EXCLUDED.sun,
+      allow_free_checkin=EXCLUDED.allow_free_checkin, default_check_in=EXCLUDED.default_check_in, default_check_out=EXCLUDED.default_check_out
+    RETURNING company_id, mon, tue, wed, thu, fri, sat, sun, allow_free_checkin, default_check_in, default_check_out
+  `, [companyId, !!b.mon, !!b.tue, !!b.wed, !!b.thu, !!b.fri, !!b.sat, !!b.sun, !!b.allow_free_checkin, b.default_check_in || null, b.default_check_out || null]);
+  res.json(r.rows[0]);
+});
+
+// Presensi locations: list/create/patch active
+app.get('/settings/locations', async (req, res) => {
+  const companyId = Number((req.query.company_id || 1));
+  const { rows } = await pool.query('SELECT id, company_id, name, latitude, longitude, radius_m, active FROM presensi_locations WHERE company_id=$1 ORDER BY id', [companyId]);
+  res.json({ items: rows });
+});
+app.post('/settings/locations', async (req, res) => {
+  const b = req.body || {};
+  const companyId = Number(b.company_id || 1);
+  const name = (b.name || '').trim();
+  const lat = Number(b.latitude);
+  const lng = Number(b.longitude);
+  const radius = Number(b.radius_m || 50);
+  if (!name || !isFinite(lat) || !isFinite(lng) || !isFinite(radius)) return res.status(400).json({ error: 'name, latitude, longitude, radius_m required' });
+  const { rows } = await pool.query('INSERT INTO presensi_locations(company_id, name, latitude, longitude, radius_m, active) VALUES ($1,$2,$3,$4,$5,TRUE) RETURNING id, company_id, name, latitude, longitude, radius_m, active', [companyId, name, lat, lng, radius]);
+  res.status(201).json(rows[0]);
+});
+app.patch('/settings/locations/:id', async (req, res) => {
+  const id = Number(req.params.id);
+  const active = !!(req.body && req.body.active);
+  const { rows } = await pool.query('UPDATE presensi_locations SET active=$1 WHERE id=$2 RETURNING id, company_id, name, latitude, longitude, radius_m, active', [active, id]);
+  if (!rows[0]) return res.status(404).json({ error: 'not found' });
+  res.json(rows[0]);
+});
+
+// Jabatan-presensi method: get/set
+app.get('/jabatan-presensi', async (_req, res) => {
+  const { rows } = await pool.query('SELECT jp.id, jp.jabatan_id, j.name AS jabatan_name, jp.method, jp.updated_at FROM jabatan_presensi jp JOIN jabatan j ON j.id=jp.jabatan_id ORDER BY j.name');
+  res.json(rows);
+});
+app.put('/jabatan-presensi/:jabatanId', async (req, res) => {
+  const jabatanId = Number(req.params.jabatanId);
+  const method = (req.body && req.body.method || '').toLowerCase();
+  if (!['face','qr','fingerprint'].includes(method)) return res.status(400).json({ error: 'method must be one of face, qr, fingerprint' });
+  const { rows } = await pool.query(`
+    INSERT INTO jabatan_presensi(jabatan_id, method)
+    VALUES ($1,$2)
+    ON CONFLICT (jabatan_id) DO UPDATE SET method=EXCLUDED.method, updated_at=NOW()
+    RETURNING id, jabatan_id, method, updated_at
+  `, [jabatanId, method]);
+  res.json(rows[0]);
 });
 
 app.get('/companies', async (_req, res) => {

@@ -89,10 +89,15 @@ func main() {
     // Allow GET for /auth endpoints like /auth/me and /auth/permissions
     r.PathPrefix("/auth").Handler(proxyTo("http://auth-user-service:3000")).Methods(http.MethodGet, http.MethodPost, http.MethodOptions)
 
+    // User biometrics endpoints (proxy to auth-user-service)
+    r.PathPrefix("/user-biometrics").Handler(proxyTo("http://auth-user-service:3000")).Methods(http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodOptions)
+
 	// Setting service
 	r.PathPrefix("/setting").Handler(proxyTo("http://setting-service:3000")).Methods(http.MethodGet, http.MethodPost, http.MethodPut)
+	r.PathPrefix("/settings").Handler(proxyTo("http://setting-service:3000")).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch)
 	r.PathPrefix("/companies").Handler(proxyTo("http://setting-service:3000")).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete)
 	r.PathPrefix("/jabatan").Handler(proxyTo("http://setting-service:3000")).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete)
+	r.PathPrefix("/jabatan-presensi").Handler(proxyTo("http://setting-service:3000")).Methods(http.MethodGet, http.MethodPut)
 
 	// Produk service
 	r.PathPrefix("/produk").Handler(proxyTo("http://produk-service:3000")).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete)

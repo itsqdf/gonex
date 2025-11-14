@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Swal from "sweetalert2";
 import { useRouter } from "next/navigation";
 import { authHeaders, buildQueryParams, fetchJson, PaginatedResponse } from "@/lib/helpers";
+import Toggle from "@/components/Toggle";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
@@ -97,10 +98,11 @@ export default function UsersPage() {
     router.push(`/dashboard/admin/users/${u.id}`);
   };
 
-  const toggleActive = async (u: User) => {
+  const toggleActive = async (u: User, nextActive?: boolean) => {
     const active = (u.status || "").toLowerCase().includes("aktif");
+    const desired = typeof nextActive === 'boolean' ? nextActive : !active;
     try {
-      const res = await fetch(`${API_URL}/users/${u.id}/active`, { method: "PUT", headers: { ...authHeaders(), "Content-Type": "application/json" }, body: JSON.stringify({ active: !active }) });
+      const res = await fetch(`${API_URL}/users/${u.id}/active`, { method: "PUT", headers: { ...authHeaders(), "Content-Type": "application/json" }, body: JSON.stringify({ active: desired }) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         return Swal.fire({ title: "Gagal", text: data?.error || "Tidak dapat mengubah status.", icon: "error" });
@@ -178,7 +180,22 @@ export default function UsersPage() {
                     <tr key={u.id} className="border-t border-gray-100">
                       <td className="py-2 text-black">{u.nama}</td>
                       <td className="py-2 text-black">{u.email}</td>
-                      <td className="py-2 text-black">{u.status}</td>
+                      <td className="py-2 text-black">
+                        {(() => {
+                          const isActive = (u.status || "").toLowerCase() === "aktif";
+                          return (
+                            <Toggle
+                              checked={isActive}
+                              confirmOnDeactivate={true}
+                              confirmOnActivate={true}
+                              confirmText={`Matikan status ${u.nama}?`}
+                              confirmTextActivate={`Nyalakan status ${u.nama}?`}
+                              onChange={(next)=>toggleActive(u, next)}
+                              size="md"
+                            />
+                          );
+                        })()}
+                      </td>
                       <td className="py-2 text-black">{u.jabatan || '-'}</td>
                       <td className="py-2">
                         <div className="flex items-center gap-2">
@@ -191,16 +208,7 @@ export default function UsersPage() {
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path d="M12 5c-7 0-10 7-10 7s3 7 10 7 10-7 10-7-3-7-10-7Zm0 12a5 5 0 1 1 0-10 5 5 0 0 1 0 10Z"/></svg>
                             <span>Detail</span>
                           </button>
-                          <button
-                            onClick={() => toggleActive(u)}
-                            aria-label="Toggle aktif"
-                            className={`inline-flex items-center gap-1.5 px-2 py-1 rounded text-sm border ${ (u.status||'').toLowerCase().includes('aktif') ? 'bg-green-600 hover:bg-green-700 text-white border-green-700/40' : 'bg-gray-500 hover:bg-gray-600 text-white border-gray-600/40'}`}
-                            title={(u.status||'').toLowerCase().includes('aktif') ? 'Matikan' : 'Nyalakan'}
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
-                              <path d="M12 2a1 1 0 0 1 1 1v7a1 1 0 1 1-2 0V3a1 1 0 0 1 1-1Zm0 22A8 8 0 1 1 12 6a8 8 0 0 1 0 18Z" />
-                            </svg>
-                          </button>
+                          {/* Toggle aktif dipindahkan ke kolom Status */}
                           <button
                             onClick={() => goEditUser(u)}
                             aria-label="Edit pengguna"

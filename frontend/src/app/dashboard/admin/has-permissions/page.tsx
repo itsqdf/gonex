@@ -15,22 +15,39 @@ export default function HasPermissionsPage() {
   const [selectedRole, setSelectedRole] = useState<number | null>(null);
   const [checked, setChecked] = useState<Record<number, boolean>>({});
   const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string>("");
+  const [roleLoading, setRoleLoading] = useState<boolean>(false);
+  const [roleError, setRoleError] = useState<string>("");
 
   const loadBase = async () => {
     setLoading(true);
+    setErrorMsg("");
     try {
       const [rRes, pRes] = await Promise.all([
         fetchJson<PaginatedResponse<Role[]>>(`/roles`),
         fetchJson<PaginatedResponse<Perm[]>>(`/permissions`),
       ]);
-      const rData = Array.isArray(rRes?.data) ? rRes.data : [];
-      const pData = Array.isArray(pRes?.data) ? pRes.data : [];
-      setRoles(rData);
-      setPerms(pData);
-      const firstRole = rData[0]?.id || null;
+      const rData = Array.isArray((rRes as any)?.data)
+        ? (rRes as any).data
+        : Array.isArray(rRes as any)
+        ? (rRes as any)
+        : [];
+      const pData = Array.isArray((pRes as any)?.data)
+        ? (pRes as any).data
+        : Array.isArray(pRes as any)
+        ? (pRes as any)
+        : [];
+      setRoles(rData as Role[]);
+      setPerms(pData as Perm[]);
+      const firstRole = (rData as Role[])[0]?.id || null;
       setSelectedRole(firstRole);
+      if ((pData as Perm[]).length === 0) {
+        setErrorMsg("Permissions kosong atau endpoint tidak tersedia. Cek /permissions.");
+      }
     } catch (e: any) {
-      Swal.fire({ title: 'Gagal', text: e?.message || 'Tidak dapat memuat roles/permissions', icon: 'error' });
+      const msg = e?.message || 'Tidak dapat memuat roles/permissions';
+      setErrorMsg(msg);
+      Swal.fire({ title: 'Gagal', text: msg, icon: 'error' });
       setRoles([]);
       setPerms([]);
       setSelectedRole(null);
@@ -40,6 +57,8 @@ export default function HasPermissionsPage() {
   };
 
   const loadRolePerms = async (roleId: number) => {
+    setRoleLoading(true);
+    setRoleError("");
     try {
       const res = await fetchJson<{ data: Perm[] }>(`/permissions/by-role/${roleId}`);
       const ids = new Set<number>((res.data || []).map((p:Perm)=>p.id));
@@ -47,10 +66,14 @@ export default function HasPermissionsPage() {
       perms.forEach(p => { next[p.id] = ids.has(p.id); });
       setChecked(next);
     } catch (e: any) {
-      Swal.fire({ title: 'Gagal', text: e?.message || 'Tidak dapat memuat permissions untuk role', icon: 'error' });
+      const msg = e?.message || 'Tidak dapat memuat permissions untuk role';
+      setRoleError(msg);
+      Swal.fire({ title: 'Gagal', text: msg, icon: 'error' });
       const next: Record<number, boolean> = {};
       perms.forEach(p => { next[p.id] = false; });
       setChecked(next);
+    } finally {
+      setRoleLoading(false);
     }
   };
 
@@ -104,6 +127,11 @@ export default function HasPermissionsPage() {
           <h2 className="text-lg font-semibold text-black">Has Permissions</h2>
           <div className="text-sm text-black/80">Dipilih: {allSelectedCount}</div>
         </div>
+        {errorMsg && (
+          <div className="mb-3 rounded-lg bg-white/80 backdrop-blur border border-rose-200 p-3 text-sm text-rose-700 shadow">
+            {errorMsg}
+          </div>
+        )}
         <div className="rounded-2xl bg-white/80 backdrop-blur border border-white/60 p-4 shadow">
           {loading ? (
             <p className="text-sm text-black">Memuat...</p>
@@ -114,6 +142,10 @@ export default function HasPermissionsPage() {
                 <select value={selectedRole ?? ''} onChange={(e)=>setSelectedRole(Number(e.target.value))} className="px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm text-black">
                   {roles.map(r => (<option key={r.id} value={r.id}>{r.name}</option>))}
                 </select>
+                {roleLoading && <span className="text-sm text-black/60">Memuat permissions role...</span>}
+                {roleError && (
+                  <span className="text-sm text-rose-700">{roleError}</span>
+                )}
                 <button onClick={save} className="ml-auto text-blue-700 hover:text-white border border-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:border-blue-500 dark:text-blue-500 dark:hover:text-white dark:hover:bg-blue-500 dark:focus:ring-blue-800 inline-flex items-center justify-center gap-2" aria-label="Simpan" title="Simpan">
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
@@ -146,6 +178,9 @@ export default function HasPermissionsPage() {
                             <span className="text-xs text-black/60">{p.description || (p.code !== (p.name||'') ? p.code : '')}</span>
                           </label>
                         ))}
+                        {related.length === 0 && (
+                          <div className="text-sm text-black/70">Tidak ada permissions di grup ini.</div>
+                        )}
                       </div>
                     </div>
                   );
@@ -166,6 +201,12 @@ export default function HasPermissionsPage() {
                       <span className="text-xs text-black/60">{p.description || (p.code !== (p.name||'') ? p.code : '')}</span>
                     </label>
                   ))}
+                  {perms.filter(p=> {
+                    if (p.code.startsWith('menu_')) return false;
+                    return !menuGroups.some(g => g.prefixes.some(pref => p.code.startsWith(pref)));
+                  }).length === 0 && (
+                    <div className="text-sm text-black/70">Tidak ada permissions lainnya.</div>
+                  )}
                 </div>
               </div>
             </>

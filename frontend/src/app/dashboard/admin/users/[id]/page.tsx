@@ -20,6 +20,7 @@ export default function DetailUserPage() {
   const router = useRouter();
   const [user, setUser] = useState<DetailUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [roles, setRoles] = useState<string[]>([]);
 
   useEffect(() => {
     const id = params?.id as string;
@@ -34,6 +35,20 @@ export default function DetailUserPage() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
+  }, [params]);
+
+  // Muat roles assignment (readonly) dari user-roles
+  useEffect(() => {
+    const id = params?.id as string;
+    if (!id) return;
+    fetch(`${API_URL}/roles-user?user_id=${id}&limit=100`, { headers: authHeaders() })
+      .then((r) => r.json().catch(() => ({})))
+      .then((d) => {
+        const arr = Array.isArray(d?.data) ? d.data : Array.isArray(d) ? d : [];
+        const list = (arr as any[]).map((x) => x.role || x.name).filter(Boolean);
+        setRoles(list as string[]);
+      })
+      .catch(() => {});
   }, [params]);
 
   return (
@@ -63,7 +78,7 @@ export default function DetailUserPage() {
               <div>
                 <label className="text-xs text-gray-500">Status</label>
                 <div className="inline-flex items-center gap-2">
-                  <span className={`px-2 py-0.5 rounded text-xs ${ (user.status||'').toLowerCase().includes('aktif') ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-700'}`}>{user.status || '-'}</span>
+                  <span className={`px-2 py-0.5 rounded text-xs ${ (user.status||'').toLowerCase() === 'aktif' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{ (user.status||'').toLowerCase() === 'aktif' ? 'Aktif' : 'Tidak Aktif' }</span>
                 </div>
               </div>
               <div>
@@ -76,6 +91,18 @@ export default function DetailUserPage() {
                   <div className="text-black font-medium">{user.role}</div>
                 </div>
               ) : null}
+              <div className="sm:col-span-2">
+                <label className="text-xs text-gray-500">Roles (readonly)</label>
+                {roles.length > 0 ? (
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {roles.map((r, idx) => (
+                      <span key={idx} className="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-800 border border-gray-200">{r}</span>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-black text-sm">Tidak ada roles terpasang.</div>
+                )}
+              </div>
             </div>
           ) : (
             <p className="text-sm text-black">Data tidak ditemukan.</p>

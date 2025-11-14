@@ -49,7 +49,11 @@ async function initDb() {
     CREATE TABLE IF NOT EXISTS rekening (
       id SERIAL PRIMARY KEY,
       bank TEXT,
-      nomor TEXT
+      nomor TEXT,
+      kode TEXT,
+      jenis TEXT,
+      atas_nama TEXT,
+      saldo NUMERIC DEFAULT 0
     );
   `);
 
@@ -60,6 +64,10 @@ async function initDb() {
   await pool.query(`ALTER TABLE IF EXISTS masuk ADD COLUMN IF NOT EXISTS tanggal TIMESTAMP DEFAULT NOW();`);
   await pool.query(`ALTER TABLE IF EXISTS masuk ADD COLUMN IF NOT EXISTS keterangan TEXT;`);
   await pool.query(`ALTER TABLE IF EXISTS masuk ADD COLUMN IF NOT EXISTS rekening_id INT;`);
+  await pool.query(`ALTER TABLE IF EXISTS rekening ADD COLUMN IF NOT EXISTS kode TEXT;`);
+  await pool.query(`ALTER TABLE IF EXISTS rekening ADD COLUMN IF NOT EXISTS jenis TEXT;`);
+  await pool.query(`ALTER TABLE IF EXISTS rekening ADD COLUMN IF NOT EXISTS atas_nama TEXT;`);
+  await pool.query(`ALTER TABLE IF EXISTS rekening ADD COLUMN IF NOT EXISTS saldo NUMERIC DEFAULT 0;`);
 
   // Seed minimal demo data if empty
   const seeds = [
@@ -68,7 +76,7 @@ async function initDb() {
     ['arus', ['tanggal', 'tipe', 'jumlah'], [new Date().toISOString(), 'masuk', 100000]],
     ['keluar', ['jumlah', 'keterangan'], [50000, 'Pengeluaran awal']],
     ['masuk', ['jumlah', 'keterangan'], [150000, 'Pemasukan awal']],
-    ['rekening', ['bank', 'nomor'], ['BCA', '123-456']]
+    ['rekening', ['kode','bank','jenis','nomor','atas_nama','saldo'], ['REK-001','BCA','BANK','123-456','Demo User', 0]]
   ];
   for (const s of seeds) {
     const table = s[0];
@@ -136,9 +144,72 @@ app.get('/kas', async (req, res) => {
 app.get('/arus', async (req, res) => { const { rows } = await pool.query('SELECT tanggal, tipe, jumlah FROM arus ORDER BY tanggal'); res.json(rows); });
 app.get('/keluar', async (req, res) => { const { rows } = await pool.query('SELECT id, jumlah FROM keluar ORDER BY id'); res.json(rows); });
 app.get('/masuk', async (req, res) => { const { rows } = await pool.query('SELECT id, jumlah FROM masuk ORDER BY id'); res.json(rows); });
-app.get('/rekening', async (req, res) => { const { rows } = await pool.query('SELECT id, bank, nomor FROM rekening ORDER BY id'); res.json(rows); });
-app.post('/rekening', async (req, res) => { const { bank, nomor } = req.body || {}; if (!bank || !nomor) return res.status(400).json({ error: 'bank and nomor required' }); const { rows } = await pool.query('INSERT INTO rekening(bank, nomor) VALUES ($1, $2) RETURNING id, bank, nomor', [bank, nomor]); res.status(201).json(rows[0]); });
-app.put('/rekening/:id', async (req, res) => { const id = Number(req.params.id); const { bank, nomor } = req.body || {}; const { rows } = await pool.query('UPDATE rekening SET bank=COALESCE($1,bank), nomor=COALESCE($2,nomor) WHERE id=$3 RETURNING id, bank, nomor', [bank, nomor, id]); if (!rows[0]) return res.status(404).json({ error: 'not found' }); res.json(rows[0]); });
+app.get('/rekening', async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT 
+      id,
+      COALESCE(kode,'') AS kode,
+      COALESCE(bank,'') AS nama,
+      COALESCE(jenis,'') AS jenis,
+      COALESCE(nomor,'') AS nomor,
+      COALESCE(atas_nama,'') AS atas_nama,
+      COALESCE(saldo,0) AS saldo
+    FROM rekening ORDER BY id`
+  );
+  res.json(rows);
+});
+
+app.post('/rekening', async (req, res) => {
+  const { kode, nama, bank, jenis, nomor, atas_nama, saldo } = req.body || {};
+  const name = (nama || bank || '').toString().trim();
+  const number = (nomor || '').toString().trim();
+  if (!name || !number) return res.status(400).json({ error: 'nama/bank and nomor required' });
+  const j = (jenis || '').toString().trim() || null;
+  const an = (atas_nama || '').toString().trim() || null;
+  const sVal = Number(saldo);
+  const s = Number.isFinite(sVal) ? sVal : 0;
+  const { rows } = await pool.query(
+    `INSERT INTO rekening(kode, bank, jenis, nomor, atas_nama, saldo)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id,
+       COALESCE(kode,'') AS kode,
+       COALESCE(bank,'') AS nama,
+       COALESCE(jenis,'') AS jenis,
+       COALESCE(nomor,'') AS nomor,
+       COALESCE(atas_nama,'') AS atas_nama,
+       COALESCE(saldo,0) AS saldo`,
+    [kode || null, name, j, number, an, s]
+  );
+  res.status(201).json(rows[0]);
+});
+
+app.put('/rekening/:id', async (req, res) => {
+  const id = Number(req.params.id);
+  const { kode, nama, bank, jenis, nomor, atas_nama, saldo } = req.body || {};
+  const name = (nama || bank || null);
+  const sVal = Number(saldo);
+  const s = Number.isFinite(sVal) ? sVal : null;
+  const { rows } = await pool.query(
+    `UPDATE rekening SET 
+      kode=COALESCE($1, kode),
+      bank=COALESCE($2, bank),
+      jenis=COALESCE($3, jenis),
+      nomor=COALESCE($4, nomor),
+      atas_nama=COALESCE($5, atas_nama),
+      saldo=COALESCE($6, saldo)
+     WHERE id=$7
+     RETURNING id,
+       COALESCE(kode,'') AS kode,
+       COALESCE(bank,'') AS nama,
+       COALESCE(jenis,'') AS jenis,
+       COALESCE(nomor,'') AS nomor,
+       COALESCE(atas_nama,'') AS atas_nama,
+       COALESCE(saldo,0) AS saldo`,
+    [kode || null, name, jenis || null, nomor || null, atas_nama || null, s, id]
+  );
+  if (!rows[0]) return res.status(404).json({ error: 'not found' });
+  res.json(rows[0]);
+});
 app.delete('/rekening/:id', async (req, res) => { const id = Number(req.params.id); const { rowCount } = await pool.query('DELETE FROM rekening WHERE id=$1', [id]); if (!rowCount) return res.status(404).json({ error: 'not found' }); res.json({ ok: true }); });
 
 // Create ledger entries via unified /kas endpoint

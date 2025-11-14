@@ -12,6 +12,7 @@ type User = { id: number; nama: string; email: string; role?: string };
 export default function RolesUserPage() {
   const [items, setItems] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string>("");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
@@ -32,21 +33,27 @@ export default function RolesUserPage() {
   const load = () => {
     if (!token) return;
     setLoading(true);
+    setErrorMsg("");
     const qs: string[] = [];
     if (query) qs.push(`q=${encodeURIComponent(query)}`);
     if (userIdFilter) qs.push(`user_id=${encodeURIComponent(userIdFilter)}`);
     qs.push(`page=${page}`);
     qs.push(`limit=${limit}`);
     fetch(`${API_URL}/roles-user?${qs.join("&")}`, { headers: { Authorization: `Bearer ${token}` }})
-      .then(r=>r.json().catch(()=>({})))
+      .then(async (r) => {
+        const j = await r.json().catch(()=>({}));
+        if (!r.ok) throw new Error((j as any)?.error || "Tidak dapat memuat roles-user");
+        return j;
+      })
       .then(d=>{
-        const arr: any[] = Array.isArray(d?.data) ? d.data : [];
+        const arr: any[] = Array.isArray(d?.data) ? d.data : Array.isArray(d) ? (d as any[]) : [];
         const items: Assignment[] = arr.map((x:any)=>({ id: x.id, user_id: x.user_id, role_id: x.role_id, role: x.role || '-' }));
         setItems(items);
-        const meta = d?.meta || {};
+        const meta = (d as any)?.meta || {};
         if (typeof meta.total === 'number') setTotal(meta.total);
         if (typeof meta.pages === 'number') setPages(meta.pages);
       })
+      .catch((e:any)=>{ setErrorMsg(e?.message || "Gagal memuat data"); setItems([]); setTotal(0); setPages(0); })
       .finally(()=>setLoading(false));
   };
 
@@ -96,6 +103,12 @@ export default function RolesUserPage() {
             <input value={query} onChange={e=>{ setQuery(e.target.value); setPage(1);} } placeholder="Cari role" className="px-3 py-2 rounded border w-64" />
           </div>
         </div>
+
+        {errorMsg && (
+          <div className="mb-3 rounded-lg bg-white/80 backdrop-blur border border-rose-200 p-3 text-sm text-rose-700 shadow">
+            {errorMsg}
+          </div>
+        )}
 
         <div className="rounded-2xl bg-white/80 backdrop-blur border border-white/60 p-4 shadow mb-6">
           <h3 className="text-black font-medium mb-2">Assign Role ke User</h3>
@@ -147,6 +160,8 @@ export default function RolesUserPage() {
           </div>
           {loading ? (
             <p className="text-sm text-black">Memuat...</p>
+          ) : items.length === 0 ? (
+            <p className="text-sm text-black/70">Tidak ada data untuk filter/kriteria saat ini.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">

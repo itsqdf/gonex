@@ -91,6 +91,8 @@ export default function Sidebar() {
   const canShowPayment = perms.includes('menu_payment') || perms.includes('manage');
   const canShowChat = perms.includes('menu_chat') || perms.includes('manage');
   const canShowML = perms.includes('menu_ml') || perms.includes('manage');
+  const canShowClient = perms.includes('menu_client') || perms.includes('manage');
+  const canShowUserBiometrics = perms.includes('menu_user_biometrics') || perms.includes('manage');
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -137,6 +139,7 @@ export default function Sidebar() {
                   { href: '/dashboard/admin/users', label: 'Users' },
                   { href: '/dashboard/admin/companies', label: 'Companies' },
                   { href: '/dashboard/admin/jabatan', label: 'Jabatan' },
+                  ...(canShowClient ? [{ href: '/dashboard/admin/clients', label: 'Clients' }] : []),
                 ], openMaster, () => setOpenMaster(o=>!o))}
               {canShowAccess && group('Hak Akses', [
                   { href: '/dashboard/admin/roles', label: 'Roles' },
@@ -173,6 +176,8 @@ export default function Sidebar() {
                   { href: '/dashboard/admin/presensi/settings', label: 'Setting Presensi' },
                   { href: '/dashboard/admin/presensi/activities', label: 'Schedule Presensi' },
                   { href: '/dashboard/admin/presensi/check-in', label: 'Check In/Out' },
+                  { href: '/dashboard/admin/presensi/analytics', label: 'Analytics' },
+                  ...(canShowUserBiometrics ? [{ href: '/dashboard/admin/presensi/user-biometrics', label: 'User Biometrics' }] : []),
                 ], openPresensi, () => setOpenPresensi(o=>!o))}
               {canShowPayment && group('Payment', [
                   { href: '/dashboard/admin/payment', label: 'Transaksi' },
@@ -215,6 +220,7 @@ export default function Sidebar() {
                 { href: '/dashboard/admin/users', label: 'Users' },
                 { href: '/dashboard/admin/companies', label: 'Companies' },
                 { href: '/dashboard/admin/jabatan', label: 'Jabatan' },
+                ...(canShowClient ? [{ href: '/dashboard/admin/clients', label: 'Clients' }] : []),
               ], openMaster, () => setOpenMaster(o=>!o))}
 
               {canShowAccess && group('Hak Akses', [
@@ -258,6 +264,8 @@ export default function Sidebar() {
                 { href: '/dashboard/admin/presensi/settings', label: 'Setting Presensi' },
                 { href: '/dashboard/admin/presensi/activities', label: 'Schedule Presensi' },
                 { href: '/dashboard/admin/presensi/check-in', label: 'Check In/Out' },
+                { href: '/dashboard/admin/presensi/analytics', label: 'Analytics' },
+                ...(canShowUserBiometrics ? [{ href: '/dashboard/admin/presensi/user-biometrics', label: 'User Biometrics' }] : []),
               ], openPresensi, () => setOpenPresensi(o=>!o))}
 
               {canShowPayment && group('Payment', [

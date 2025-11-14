@@ -60,6 +60,27 @@ services:
     depends_on:
       - delete-db
 
+  # Migrator untuk menjalankan seluruh file SQL di backend/migrations
+  db-migrator:
+    image: postgres:16-alpine
+    depends_on:
+      - auth-user-db
+      - setting-db
+      - produk-db
+      - keuangan-db
+      - client-db
+      - delete-db
+    volumes:
+      - ./migrations:/migrations
+    entrypoint: ["/bin/sh","-c"]
+    command: >
+      PGPASSWORD=armagedon25 psql -h auth-user-db -U root -d auth_db -f /migrations/auth.sql &&
+      PGPASSWORD=armagedon25 psql -h setting-db -U root -d setting_db -f /migrations/setting.sql &&
+      PGPASSWORD=armagedon25 psql -h produk-db -U root -d produk_db -f /migrations/produk.sql &&
+      PGPASSWORD=armagedon25 psql -h keuangan-db -U root -d keuangan_db -f /migrations/keuangan.sql &&
+      PGPASSWORD=armagedon25 psql -h client-db -U root -d client_db -f /migrations/client.sql &&
+      PGPASSWORD=armagedon25 psql -h delete-db -U root -d delete_db -f /migrations/delete.sql
+
   auth-user-db:
     image: postgres:16-alpine
     environment:

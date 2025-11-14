@@ -37,6 +37,8 @@ export default function PresensiSettingsPage() {
   });
   const [locations, setLocations] = useState<any[]>([]);
   const [locForm, setLocForm] = useState<{name:string; latitude:string; longitude:string; radius_m:string}>({ name: "", latitude: "", longitude: "", radius_m: "50" });
+  const [jabatan, setJabatan] = useState<any[]>([]);
+  const [methodMap, setMethodMap] = useState<Record<number, string>>({});
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -76,7 +78,20 @@ export default function PresensiSettingsPage() {
     } catch {}
   };
 
-  useEffect(() => { load(); loadLocations(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [companyId]);
+  const loadJabatan = async () => {
+    try {
+      const jr = await fetch(`${API_URL}/jabatan`, { headers });
+      const jl = await jr.json().catch(()=>[]);
+      if (Array.isArray(jl)) setJabatan(jl);
+      const mr = await fetch(`${API_URL}/jabatan-presensi`, { headers });
+      const ml = await mr.json().catch(()=>[]);
+      const map: Record<number, string> = {};
+      (Array.isArray(ml) ? ml : []).forEach((it:any)=>{ map[Number(it.jabatan_id)] = String(it.method); });
+      setMethodMap(map);
+    } catch {}
+  };
+
+  useEffect(() => { load(); loadLocations(); loadJabatan(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [companyId]);
 
   const save = async () => {
     setMsg(null);
@@ -130,6 +145,19 @@ export default function PresensiSettingsPage() {
       const r = await fetch(`${API_URL}/settings/locations/${id}`, { method: "PATCH", headers, body: JSON.stringify({ active }) });
       if (r.ok) await loadLocations();
     } catch {}
+  };
+
+  const updateMethod = async (jid: number, method: string) => {
+    setMsg(null);
+    try {
+      const r = await fetch(`${API_URL}/jabatan-presensi/${jid}`, { method: "PATCH", headers, body: JSON.stringify({ method }) });
+      const d = await r.json().catch(()=>({}));
+      if (!r.ok) throw new Error(d?.error || `Gagal menyimpan metode (${r.status})`);
+      setMethodMap(s=>({ ...s, [jid]: method }));
+      setMsg("Metode presensi diperbarui untuk jabatan");
+    } catch (e:any) {
+      setMsg(e?.message || "Gagal memperbarui metode");
+    }
   };
 
   return (
@@ -225,6 +253,34 @@ export default function PresensiSettingsPage() {
                             <input type="checkbox" checked={!!l.active} onChange={e=>toggleActive(l.id, e.target.checked)} />
                             <span>Aktif</span>
                           </label>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+
+              <div className="pt-4 border-t mt-4">
+                <p className="text-black font-medium mb-2">Metode Presensi per Jabatan</p>
+                <div className="rounded border bg-white/70">
+                  {jabatan.length === 0 ? (
+                    <p className="p-3 text-sm text-gray-600">Belum ada jabatan terdaftar.</p>
+                  ) : (
+                    <ul>
+                      {jabatan.map((j:any)=> (
+                        <li key={j.id} className="p-3 border-b flex items-center justify-between">
+                          <div>
+                            <p className="text-sm text-black font-medium">{j.name}</p>
+                            <p className="text-xs text-gray-700">ID: {j.id}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <select value={methodMap[j.id] || ''} onChange={e=>updateMethod(j.id, e.target.value)} className="px-3 py-2 rounded border">
+                              <option value="">Pilih metode…</option>
+                              <option value="face">Face Recognition</option>
+                              <option value="qr">QR Generator</option>
+                              <option value="fingerprint">Fingerprint</option>
+                            </select>
+                          </div>
                         </li>
                       ))}
                     </ul>
