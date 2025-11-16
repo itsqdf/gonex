@@ -7,6 +7,8 @@ const nextConfig: NextConfig = {
   async rewrites() {
     const api = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
     return [
+      // Global catch-all to support client using "/api/..." base URL
+      { source: '/api/:path*', destination: api + '/:path*' },
       // Delete service
       { source: '/deletion-logs/:path*', destination: api + '/deletion-logs/:path*' },
       // Auth/User service
@@ -17,8 +19,12 @@ const nextConfig: NextConfig = {
       { source: '/auth/:path*', destination: api + '/auth/:path*' },
       // Setting service
       { source: '/setting/:path*', destination: api + '/setting/:path*' },
+      { source: '/settings/:path*', destination: api + '/settings/:path*' },
+      { source: '/jabatan-presensi/:path*', destination: api + '/jabatan-presensi/:path*' },
       { source: '/companies/:path*', destination: api + '/companies/:path*' },
       { source: '/jabatan/:path*', destination: api + '/jabatan/:path*' },
+      { source: '/clients/:path*', destination: api + '/clients/:path*' },
+      { source: '/vendors/:path*', destination: api + '/vendors/:path*' },
       // Produk service
       { source: '/produk/:path*', destination: api + '/produk/:path*' },
       { source: '/gudang/:path*', destination: api + '/gudang/:path*' },

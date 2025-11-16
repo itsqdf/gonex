@@ -6,7 +6,7 @@ import FloatingDatepicker from "../../../../components/FloatingDatepicker";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
 
-type Category = { id: number; nama: string };
+type Category = { id: number; nama: string; maintenance?: boolean };
 type Item = {
   id: number;
   category_id?: number | null;
@@ -58,9 +58,9 @@ export default function AssetsPage() {
   const loadCats = async () => {
     try {
       const r = await fetch(`${API_URL}/category-assets`, { headers: { Authorization: `Bearer ${token}` } });
-      const d = await r.json();
-      const list = Array.isArray(d.data) ? d.data : [];
-      setCats(list.map((it:any)=>({ id: it.id, nama: it.nama })));
+      const d = await r.json().catch(()=>({}));
+      const list = Array.isArray((d as any)?.data) ? (d as any).data : Array.isArray(d) ? (d as any) : Array.isArray((d as any)?.items) ? (d as any).items : [];
+      setCats(list.map((it:any)=>({ id: Number(it.id), nama: String(it.nama || it.name || ''), maintenance: !!(it.maintenance ?? it.need_maintenance) })));
     } catch (e) {}
   };
 
@@ -68,8 +68,8 @@ export default function AssetsPage() {
     setLoading(true);
     try {
       const r = await fetch(`${API_URL}/assets?q=${encodeURIComponent(q)}`, { headers: { Authorization: `Bearer ${token}` } });
-      const d = await r.json();
-      const list = Array.isArray(d.data) ? d.data : [];
+      const d = await r.json().catch(()=>({}));
+      const list = Array.isArray((d as any)?.data) ? (d as any).data : Array.isArray(d) ? (d as any) : Array.isArray((d as any)?.items) ? (d as any).items : [];
       setItems(list.map((it: any) => ({
         id: it.id,
         category_id: it.category_id ?? null,
@@ -90,6 +90,12 @@ export default function AssetsPage() {
   };
 
   useEffect(() => { loadCats(); }, []);
+  // Autofill need_maintenance berdasarkan kategori yang dipilih
+  useEffect(() => {
+    if (!category_id) { setNeedMaintenance(false); return; }
+    const c = cats.find(c=> c.id === category_id);
+    setNeedMaintenance(!!c?.maintenance);
+  }, [category_id, cats]);
   useEffect(() => { loadData(); }, [q]);
 
   const total = items.length;
@@ -222,8 +228,11 @@ export default function AssetsPage() {
               <label className="absolute left-3 -top-2.5 bg-white px-1 text-xs text-gray-600">Status</label>
             </div>
             <div className="flex items-center gap-2">
-              <input type="checkbox" checked={need_maintenance} onChange={e=>setNeedMaintenance(e.target.checked)} />
+              <input type="checkbox" checked={need_maintenance} onChange={e=>setNeedMaintenance(e.target.checked)} disabled={!!cats.find(c=> c.id===category_id)?.maintenance} />
               <span className="text-sm text-black">Perlu Maintenance</span>
+              {cats.find(c=> c.id===category_id)?.maintenance && (
+                <span className="text-xs text-gray-600">(Diwajibkan oleh kategori)</span>
+              )}
             </div>
           </div>
           <div className="mt-3">
@@ -248,8 +257,10 @@ export default function AssetsPage() {
                     <th className="py-2">Kode</th>
                     <th className="py-2">Nama</th>
                     <th className="py-2">Category</th>
+                    <th className="py-2">Tanggal Beli</th>
                     <th className="py-2">Nilai</th>
                     <th className="py-2">Status</th>
+                    <th className="py-2">Perlu Maint.</th>
                     <th className="py-2">Aksi</th>
                   </tr>
                 </thead>
@@ -272,12 +283,47 @@ export default function AssetsPage() {
                       </td>
                       <td className="py-2 text-black">
                         {it._editing ? (
-                          <select value={it._category_id ?? ""} onChange={e=>setItems(prev=>prev.map(p=>p.id===it.id?{...p, _category_id: e.target.value?Number(e.target.value):null}:p))} className="px-2 py-1 rounded border">
+                          <select value={it._category_id ?? ""} onChange={e=>{
+                            const val = e.target.value ? Number(e.target.value) : null;
+                            setItems(prev=>prev.map(p=>{
+                              if (p.id !== it.id) return p;
+                              const cat = cats.find(c=> c.id === val!);
+                              const enforced = !!cat?.maintenance;
+                              return { ...p, _category_id: val, _need_maintenance: enforced ? true : p._need_maintenance };
+                            }));
+                          }} className="px-2 py-1 rounded border">
                             <option value="">Tidak ada</option>
                             {cats.map(c=> <option key={c.id} value={c.id}>{c.nama}</option>)}
                           </select>
                         ) : (
                           it.category_nama || "-"
+                        )}
+                      </td>
+                      <td className="py-2 text-black">
+                        {it._editing ? (
+                          <div className="relative z-20">
+                            <FloatingDatepicker
+                              id={`purchase_date_${it.id}`}
+                              label="Tanggal Beli"
+                              value={it._purchase_date ? new Date(it._purchase_date) : (it.purchase_date ? new Date(it.purchase_date) : null)}
+                              onChange={(val: unknown) => {
+                                const toYMD = (d: Date) => {
+                                  const y = d.getFullYear();
+                                  const m = String(d.getMonth() + 1).padStart(2, '0');
+                                  const day = String(d.getDate()).padStart(2, '0');
+                                  return `${y}-${m}-${day}`;
+                                };
+                                let next = "";
+                                if (!val) next = "";
+                                else if (val instanceof Date && !isNaN(val.getTime())) next = toYMD(val);
+                                else if (typeof val === "string") { const d = new Date(val); if (!isNaN(d.getTime())) next = toYMD(d); }
+                                else if (typeof val === "number") { const d = new Date(val); if (!isNaN(d.getTime())) next = toYMD(d); }
+                                setItems(prev=>prev.map(p=>p.id===it.id?{...p, _purchase_date: next}:p));
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          it.purchase_date || "-"
                         )}
                       </td>
                       <td className="py-2 text-black">
@@ -297,6 +343,22 @@ export default function AssetsPage() {
                           </select>
                         ) : (
                           it.status
+                        )}
+                      </td>
+                      <td className="py-2 text-black">
+                        {it._editing ? (
+                          <label className="inline-flex items-center gap-2">
+                            <input type="checkbox" checked={!!it._need_maintenance} onChange={e=>setItems(prev=>prev.map(p=>{
+                              if (p.id !== it.id) return p;
+                              const cat = cats.find(c=> c.id === (p._category_id ?? p.category_id ?? 0));
+                              const enforced = !!cat?.maintenance;
+                              const nextVal = enforced ? true : e.target.checked;
+                              return { ...p, _need_maintenance: nextVal };
+                            }))} disabled={!!cats.find(c=> c.id === (it._category_id ?? it.category_id ?? 0))?.maintenance} />
+                            <span>{(it._need_maintenance ? 'Ya' : 'Tidak')}</span>
+                          </label>
+                        ) : (
+                          it.need_maintenance ? 'Ya' : 'Tidak'
                         )}
                       </td>
                       <td className="py-2">

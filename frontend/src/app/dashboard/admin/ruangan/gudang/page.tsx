@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
 
 type Warehouse = {
   id: number;
@@ -38,8 +38,14 @@ export default function GudangPage() {
     const tok = localStorage.getItem("token");
     setLoading(true);
     fetch(`${API_URL}/warehouses${q?`?q=${encodeURIComponent(q)}`:""}`, { headers: { Authorization: `Bearer ${tok}` }})
-      .then(r => r.json())
-      .then(d => { setItems(Array.isArray(d.warehouses) ? d.warehouses : []); })
+      .then(r => r.json().catch(()=>({})))
+      .then(d => {
+        const arr = Array.isArray((d as any)?.warehouses) ? (d as any).warehouses
+          : Array.isArray((d as any)?.data) ? (d as any).data
+          : Array.isArray(d) ? (d as any)
+          : [];
+        setItems(arr);
+      })
       .catch(()=>{})
       .finally(()=>setLoading(false));
   }, [q]);
@@ -47,8 +53,14 @@ export default function GudangPage() {
   useEffect(() => {
     const tok = localStorage.getItem("token");
     fetch(`${API_URL}/companies`, { headers: { Authorization: `Bearer ${tok}` }})
-      .then(r => r.json())
-      .then(d => { setCompanies(Array.isArray(d.companies) ? d.companies.map((c:any)=>({ id: c.id, nama: c.nama })) : []); })
+      .then(r => r.json().catch(()=>({})))
+      .then(d => {
+        const arr = Array.isArray((d as any)?.companies) ? (d as any).companies
+          : Array.isArray((d as any)?.data) ? (d as any).data
+          : Array.isArray(d) ? (d as any)
+          : [];
+        setCompanies(arr.map((c:any)=>({ id: Number(c.id), nama: String(c.nama || c.name || '-') })));
+      })
       .catch(()=>{});
   }, []);
 

@@ -10,6 +10,7 @@ services:
       - keuangan-service
       - client-service
       - delete-service
+      - teacher-service
 
   auth-user-service:
     build: ./services/auth-user-service-go
@@ -59,6 +60,14 @@ services:
       - DATABASE_URL=postgres://root:armagedon25@delete-db:5432/delete_db
     depends_on:
       - delete-db
+
+  teacher-service:
+    build: ./services/teacher-service
+    environment:
+      - SERVICE_PORT=3000
+      - DATABASE_URL=postgres://root:armagedon25@teacher-db:5432/teacher_db
+    depends_on:
+      - teacher-db
 
   # Migrator untuk menjalankan seluruh file SQL di backend/migrations
   db-migrator:
@@ -147,6 +156,17 @@ services:
     ports:
       - "5438:5432"
 
+  teacher-db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=teacher_db
+      - POSTGRES_USER=root
+      - POSTGRES_PASSWORD=armagedon25
+    volumes:
+      - teacher_data:/var/lib/postgresql/data
+    ports:
+      - "5439:5432"
+
 networks:
   default:
     name: gonex-net
@@ -158,3 +178,4 @@ volumes:
   keuangan_data:
   client_data:
   delete_data:
+  teacher_data:

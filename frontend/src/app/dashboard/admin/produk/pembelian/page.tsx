@@ -52,6 +52,14 @@ const [q, setQ] = useState<string>("");
   const [showForm, setShowForm] = useState<boolean>(false);
   const [page, setPage] = useState<number>(1);
   const [limit, setLimit] = useState<number>(10);
+  const [showFilters, setShowFilters] = useState<boolean>(false);
+  const [filterFrom, setFilterFrom] = useState<string>("");
+  const [filterTo, setFilterTo] = useState<string>("");
+  const [filterKode, setFilterKode] = useState<string>("");
+  const [minQty, setMinQty] = useState<string>("");
+  const [maxQty, setMaxQty] = useState<string>("");
+  const [minHarga, setMinHarga] = useState<string>("");
+  const [maxHarga, setMaxHarga] = useState<string>("");
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const readerRef = useRef<BrowserMultiFormatReader | null>(null);
   const controlsRef = useRef<any>(null);
@@ -204,14 +212,54 @@ const [q, setQ] = useState<string>("");
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-semibold text-black">Pembelian</h1>
         <div className="flex items-center gap-2">
-          <Button onClick={()=>setScanActive(s=>!s)} color="blue" outline size="sm">{scanActive ? "Stop Scan" : "Scan Barcode"}</Button>
-          <Button onClick={()=>setShowForm(s=>!s)} color="indigo" outline size="sm">{showForm?"Tutup":"Tambah"}</Button>
+          <Button onClick={()=>setScanActive(s=>!s)} color="blue" size="sm">{scanActive ? "Stop Scan" : "Scan Barcode"}</Button>
+          <Button onClick={()=>setShowForm(s=>!s)} color="indigo" size="sm">{showForm?"Tutup":"Tambah"}</Button>
           <div className="relative w-64">
-            <input value={q} onChange={e=>setQ(e.target.value)} className="peer px-3 py-2 rounded border w-full placeholder-transparent" placeholder="Cari pembelian" />
+            <input value={q} onChange={e=>setQ(e.target.value)} className="peer px-3 py-2 rounded border w-full placeholder-transparent" placeholder="Cari pembelian (kode/nama/keterangan)" />
             <label className="absolute left-3 -top-2.5 bg-white px-1 text-xs text-gray-600 peer-placeholder-shown:top-2.5 peer-placeholder-shown:bg-transparent peer-placeholder-shown:text-gray-400 transition-all">Cari pembelian</label>
           </div>
+          <Button onClick={()=>setShowFilters(s=>!s)} color="dark" size="sm">Filter</Button>
         </div>
       </div>
+      {showFilters && (
+        <div className="mb-3 rounded-lg border bg-white shadow p-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+            <div>
+              <label className="text-gray-700">Dari Tanggal</label>
+              <input type="date" value={filterFrom} onChange={e=>setFilterFrom(e.target.value)} className="px-2 py-1 rounded border w-full" />
+            </div>
+            <div>
+              <label className="text-gray-700">Sampai Tanggal</label>
+              <input type="date" value={filterTo} onChange={e=>setFilterTo(e.target.value)} className="px-2 py-1 rounded border w-full" />
+            </div>
+            <div>
+              <label className="text-gray-700">Kode Produk</label>
+              <input value={filterKode} onChange={e=>setFilterKode(e.target.value)} className="px-2 py-1 rounded border w-full" />
+            </div>
+            <div className="hidden md:block"></div>
+            <div>
+              <label className="text-gray-700">Min Qty</label>
+              <input type="number" value={minQty} onChange={e=>setMinQty(e.target.value)} className="px-2 py-1 rounded border w-full" />
+            </div>
+            <div>
+              <label className="text-gray-700">Max Qty</label>
+              <input type="number" value={maxQty} onChange={e=>setMaxQty(e.target.value)} className="px-2 py-1 rounded border w-full" />
+            </div>
+            <div>
+              <label className="text-gray-700">Min Harga</label>
+              <input type="number" value={minHarga} onChange={e=>setMinHarga(e.target.value)} className="px-2 py-1 rounded border w-full" />
+            </div>
+            <div>
+              <label className="text-gray-700">Max Harga</label>
+              <input type="number" value={maxHarga} onChange={e=>setMaxHarga(e.target.value)} className="px-2 py-1 rounded border w-full" />
+            </div>
+          </div>
+          <div className="mt-2 flex justify-end gap-2">
+            <button onClick={()=>{ setFilterFrom(""); setFilterTo(""); setFilterKode(""); setMinQty(""); setMaxQty(""); setMinHarga(""); setMaxHarga(""); }} className="px-3 py-1.5 rounded border text-sm">Reset</button>
+            <button onClick={()=>setShowFilters(false)} className="px-3 py-1.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-sm">Tutup</button>
+          </div>
+        </div>
+      )}
       {error && (<div className="mb-3 rounded border border-rose-300 bg-rose-50 text-rose-700 px-3 py-2 text-sm">{error}</div>)}
       {scanActive && (
         <div className="mb-3 rounded border p-3 bg-white">
@@ -258,7 +306,7 @@ const [q, setQ] = useState<string>("");
           )}
         </div>
         <div>
-          <Button onClick={cariProduk} color="indigo" outline size="sm">Cari Produk</Button>
+          <Button onClick={cariProduk} color="indigo" size="sm">Cari Produk</Button>
           {namaProduk && (<div className="text-xs text-gray-600 mt-1">{namaProduk}</div>)}
         </div>
         <div className="relative">
@@ -276,7 +324,7 @@ const [q, setQ] = useState<string>("");
         </div>
         <div className="md:col-span-5 flex items-center justify-between">
           <div className="text-sm text-black">Total: {fmtRupiah((parseInt(qty||'0',10)||0) * (parseFloat(hargaBeli||'0')||0))}</div>
-             <Button onClick={createPembelian} color="blue" outline size="sm" className="inline-flex items-center justify-center gap-2">
+             <Button onClick={createPembelian} color="blue" size="sm" className="inline-flex items-center justify-center gap-2">
                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                </svg>
@@ -295,7 +343,22 @@ const [q, setQ] = useState<string>("");
             </select>
             <span className="text-black">per halaman</span>
           </div>
-          <div className="text-sm text-black">Total: {items.length}</div>
+          <div className="text-sm text-black">Total: {(() => {
+            const inRange = (iso: string) => {
+              try { const y = new Date(iso).toISOString().slice(0,10); if (filterFrom && y < filterFrom) return false; if (filterTo && y > filterTo) return false; return true; } catch { return true; }
+            };
+            return items.filter(it => {
+              if (!inRange(it.tanggal)) return false;
+              const parsed = parsePembelianKet(it.keterangan);
+              if (filterKode && (!parsed || String(parsed.kode||'').toLowerCase() !== filterKode.toLowerCase())) return false;
+              const qty = parsed?.qty ?? 0; const harga = parsed?.harga ?? 0;
+              if (minQty && qty < Number(minQty)) return false;
+              if (maxQty && qty > Number(maxQty)) return false;
+              if (minHarga && harga < Number(minHarga)) return false;
+              if (maxHarga && harga > Number(maxHarga)) return false;
+              return true;
+            }).length;
+          })()}</div>
         </div>
         <table className="min-w-full text-sm text-black">
           <thead>
@@ -312,41 +375,99 @@ const [q, setQ] = useState<string>("");
           <tbody>
             {loading ? (
               <tr><td className="p-3" colSpan={7}>Loading...</td></tr>
-            ) : items.length === 0 ? (
-              <tr><td className="p-3" colSpan={7}>Tidak ada data</td></tr>
-            ) : items.slice(((page-1)*limit), ((page-1)*limit)+limit).map(it => {
-              const parsed = parsePembelianKet(it.keterangan);
-              const tanggalView = new Date(it.tanggal).toLocaleString();
-              const qtyView = parsed?.qty ?? 0;
-              const hargaView = parsed?.harga ?? 0;
-              const totalView = (qtyView || 0) * (hargaView || 0);
-              const prodView = parsed ? `${parsed.kode} ${parsed.nama}` : "-";
-              return (
-                <tr key={it.id} className="border-t">
-                  <td className="p-2">{tanggalView}</td>
-                  <td className="p-2">{prodView}</td>
-                  <td className="p-2 text-right">{fmtThousand(qtyView)}</td>
-                  <td className="p-2 text-right">{fmtRupiah(hargaView)}</td>
-                  <td className="p-2 text-right">{fmtRupiah(totalView)}</td>
-                  <td className="p-2">{it.keterangan}</td>
-                  <td className="p-2 text-center">
-                    {parsed ? (
-                      <Button onClick={()=>hapusPembelian(it)} color="red" outline size="xs">Hapus</Button>
-                    ) : (
-                      <span className="text-xs text-gray-500">Tidak dikenali</span>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
+            ) : (() => {
+              const inRange = (iso: string) => {
+                try { const y = new Date(iso).toISOString().slice(0,10); if (filterFrom && y < filterFrom) return false; if (filterTo && y > filterTo) return false; return true; } catch { return true; }
+              };
+              const filtered = items.filter(it => {
+                if (!inRange(it.tanggal)) return false;
+                const parsed = parsePembelianKet(it.keterangan);
+                if (filterKode && (!parsed || String(parsed.kode||'').toLowerCase() !== filterKode.toLowerCase())) return false;
+                const qty = parsed?.qty ?? 0; const harga = parsed?.harga ?? 0;
+                if (minQty && qty < Number(minQty)) return false;
+                if (maxQty && qty > Number(maxQty)) return false;
+                if (minHarga && harga < Number(minHarga)) return false;
+                if (maxHarga && harga > Number(maxHarga)) return false;
+                return true;
+              });
+              const start = ((page-1)*limit);
+              const sliced = filtered.slice(start, start+limit);
+              return sliced.length === 0 ? (
+                <tr><td className="p-3" colSpan={7}>Tidak ada data</td></tr>
+              ) : sliced.map(it => {
+                const parsed = parsePembelianKet(it.keterangan);
+                const tanggalView = new Date(it.tanggal).toLocaleString();
+                const qtyView = parsed?.qty ?? 0;
+                const hargaView = parsed?.harga ?? 0;
+                const totalView = (qtyView || 0) * (hargaView || 0);
+                const prodView = parsed ? `${parsed.kode} ${parsed.nama}` : "-";
+                return (
+                  <tr key={it.id} className="border-t">
+                    <td className="p-2">{tanggalView}</td>
+                    <td className="p-2">{prodView}</td>
+                    <td className="p-2 text-right">{fmtThousand(qtyView)}</td>
+                    <td className="p-2 text-right">{fmtRupiah(hargaView)}</td>
+                    <td className="p-2 text-right">{fmtRupiah(totalView)}</td>
+                    <td className="p-2">{it.keterangan}</td>
+                    <td className="p-2 text-center">
+                      {parsed ? (
+                        <Button onClick={()=>hapusPembelian(it)} color="red" outline size="xs">Hapus</Button>
+                      ) : (
+                        <span className="text-xs text-gray-500">Tidak dikenali</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              });
+            })()}
+            
           </tbody>
         </table>
         <div className="flex items-center justify-between p-3">
-          <div className="text-sm text-black">Menampilkan {(Math.min(items.length, ((page-1)*limit)+limit))} dari {items.length}</div>
+          <div className="text-sm text-black">{(() => {
+            const inRange = (iso: string) => {
+              try { const y = new Date(iso).toISOString().slice(0,10); if (filterFrom && y < filterFrom) return false; if (filterTo && y > filterTo) return false; return true; } catch { return true; }
+            };
+            const filteredCount = items.filter(it => {
+              if (!inRange(it.tanggal)) return false;
+              const parsed = parsePembelianKet(it.keterangan);
+              if (filterKode && (!parsed || String(parsed.kode||'').toLowerCase() !== filterKode.toLowerCase())) return false;
+              const qty = parsed?.qty ?? 0; const harga = parsed?.harga ?? 0;
+              if (minQty && qty < Number(minQty)) return false;
+              if (maxQty && qty > Number(maxQty)) return false;
+              if (minHarga && harga < Number(minHarga)) return false;
+              if (maxHarga && harga > Number(maxHarga)) return false;
+              return true;
+            }).length;
+            const start = ((page-1)*limit);
+            const showing = Math.min(filteredCount, start+limit) - start;
+            return `Menampilkan ${Math.max(0, showing)} dari ${filteredCount}`;
+          })()}</div>
           <div className="flex items-center gap-2">
-            <Button onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={page<=1} color="gray" outline size="sm" className="disabled:opacity-50 disabled:cursor-not-allowed">Prev</Button>
-            <span className="px-3 py-1 text-sm bg-blue-100 text-blue-800 rounded">{page} / {Math.max(1, Math.ceil(items.length/limit))}</span>
-            <Button onClick={()=>setPage(p=>p+1)} disabled={page>=Math.max(1, Math.ceil(items.length/limit))} color="gray" outline size="sm" className="disabled:opacity-50 disabled:cursor-not-allowed">Next</Button>
+            {(() => {
+              const inRange = (iso: string) => {
+                try { const y = new Date(iso).toISOString().slice(0,10); if (filterFrom && y < filterFrom) return false; if (filterTo && y > filterTo) return false; return true; } catch { return true; }
+              };
+              const filteredCount = items.filter(it => {
+                if (!inRange(it.tanggal)) return false;
+                const parsed = parsePembelianKet(it.keterangan);
+                if (filterKode && (!parsed || String(parsed.kode||'').toLowerCase() !== filterKode.toLowerCase())) return false;
+                const qty = parsed?.qty ?? 0; const harga = parsed?.harga ?? 0;
+                if (minQty && qty < Number(minQty)) return false;
+                if (maxQty && qty > Number(maxQty)) return false;
+                if (minHarga && harga < Number(minHarga)) return false;
+                if (maxHarga && harga > Number(maxHarga)) return false;
+                return true;
+              }).length;
+              const totalPages = Math.max(1, Math.ceil(filteredCount/limit));
+              return (
+                <>
+                  <Button onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={page<=1} color="gray" outline size="sm" className="disabled:opacity-50 disabled:cursor-not-allowed">Prev</Button>
+                  <span className="px-3 py-1 text-sm bg-blue-100 text-blue-800 rounded">{page} / {totalPages}</span>
+                  <Button onClick={()=>setPage(p=>Math.min(totalPages, p+1))} disabled={page>=totalPages} color="gray" outline size="sm" className="disabled:opacity-50 disabled:cursor-not-allowed">Next</Button>
+                </>
+              );
+            })()}
           </div>
         </div>
       </div>

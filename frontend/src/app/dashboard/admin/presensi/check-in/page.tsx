@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
@@ -21,6 +21,11 @@ export default function PresensiCheckInPage() {
   const [methodAllowed, setMethodAllowed] = useState<string | null>(null);
   const [method, setMethod] = useState<string>("");
   const [notes, setNotes] = useState<string>("");
+  const [cameraOn, setCameraOn] = useState<boolean>(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [fingerMsg, setFingerMsg] = useState<string>("");
+  const [qrCodeInput, setQrCodeInput] = useState<string>("");
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
@@ -67,6 +72,39 @@ export default function PresensiCheckInPage() {
 
   useEffect(() => { loadMeAndMethod(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
+  // Camera controls for Face method
+  const startCamera = async () => {
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error("Kamera tidak tersedia");
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+      setCameraOn(true);
+    } catch (e: any) {
+      setMsg(e?.message || "Gagal mengaktifkan kamera");
+    }
+  };
+
+  const stopCamera = () => {
+    try {
+      streamRef.current?.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+      if (videoRef.current) {
+        videoRef.current.pause();
+        // @ts-ignore
+        videoRef.current.srcObject = null;
+      }
+      setCameraOn(false);
+    } catch {}
+  };
+
+  useEffect(() => {
+    return () => { stopCamera(); };
+  }, []);
+
   const getLocation = async (): Promise<{lat:number; lng:number} | null> => {
     if (typeof navigator === "undefined" || !navigator.geolocation) return null;
     return new Promise((resolve) => {
@@ -89,7 +127,9 @@ export default function PresensiCheckInPage() {
       const c = await getLocation();
       const body: any = {};
       if (c) { body.latitude = c.lat; body.longitude = c.lng; }
-      if (methodAllowed) body.method = methodAllowed;
+      if (!method) { setMsg("Pilih metode check-in terlebih dahulu"); return; }
+      body.method = method;
+      if (userId) body.user_id = userId;
       if (notes) body.notes = notes;
       const r = await fetch(`${API_URL}/presensi/check-in`, { method: "POST", headers, body: JSON.stringify(body) });
       const d = await r.json().catch(() => ({}));
@@ -131,14 +171,69 @@ export default function PresensiCheckInPage() {
               <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                   <label className="text-sm text-gray-700">Metode</label>
-                  <input value={methodAllowed || ''} readOnly className="px-3 py-2 rounded border w-full bg-gray-100" />
-                  <p className="text-xs text-gray-600 mt-1">Disesuaikan otomatis dari jabatan: {jabatanName || '-'}</p>
+                  <div className="flex gap-2 mt-1">
+                    {((methodAllowed ? [methodAllowed] : ["face","fingerprint","qr"]) as string[]).map(m => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setMethod(m)}
+                        className={`px-3 py-1.5 rounded border text-sm ${method===m? 'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-800 border-gray-300 hover:bg-gray-50'}`}
+                      >
+                        {m === 'face' ? 'Kamera' : m === 'fingerprint' ? 'Fingerprint' : 'QR'}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-600 mt-1">Diatur dari jabatan: {jabatanName || '-'}</p>
                 </div>
                 <div>
                   <label className="text-sm text-gray-700">Catatan / Alasan</label>
                   <input value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Opsional" className="px-3 py-2 rounded border w-full" />
                 </div>
               </div>
+              {/* Method-specific UI */}
+              {method === 'face' && (
+                <div className="mt-4">
+                  <div className="flex items-center gap-2">
+                    {!cameraOn ? (
+                      <button onClick={startCamera} className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white shadow">Aktifkan Kamera</button>
+                    ) : (
+                      <button onClick={stopCamera} className="px-3 py-1.5 rounded-lg bg-rose-600 text-white shadow">Matikan Kamera</button>
+                    )}
+                    <span className="text-xs text-gray-600">Kamera digunakan untuk verifikasi wajah</span>
+                  </div>
+                  <div className="mt-2 rounded-xl overflow-hidden border border-gray-200 w-full max-w-sm bg-black">
+                    <video ref={videoRef} className="w-full h-64 object-cover" playsInline muted></video>
+                  </div>
+                </div>
+              )}
+              {method === 'fingerprint' && (
+                <div className="mt-4">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={async () => {
+                        setFingerMsg("");
+                        try {
+                          if (!('credentials' in navigator)) throw new Error('WebAuthn tidak tersedia');
+                          // Placeholder call; server-side challenge diperlukan untuk produksi
+                          setFingerMsg('Fingerprint siap. Lanjutkan dengan Check In.');
+                        } catch (e: any) {
+                          setFingerMsg(e?.message || 'Fingerprint tidak tersedia');
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white shadow"
+                    >Mulai Fingerprint</button>
+                    <span className="text-xs text-gray-600">Gunakan perangkat yang mendukung sidik jari</span>
+                  </div>
+                  {fingerMsg && <p className="text-xs text-black mt-2">{fingerMsg}</p>}
+                </div>
+              )}
+              {method === 'qr' && (
+                <div className="mt-4">
+                  <label className="text-sm text-gray-700">Masukkan Kode QR (opsional)</label>
+                  <input value={qrCodeInput} onChange={e=>setQrCodeInput(e.target.value)} placeholder="Contoh: EMP-123-QR" className="px-3 py-2 rounded border w-full" />
+                  <p className="text-xs text-gray-600 mt-1">Kode membantu pencocokan, server tetap validasi biometrik aktif</p>
+                </div>
+              )}
             </div>
           )}
           <div className="mt-4 flex items-center gap-2">

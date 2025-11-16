@@ -83,15 +83,22 @@ export default function HasPermissionsPage() {
   const toggle = (id:number) => setChecked(prev => ({ ...prev, [id]: !prev[id] }));
   const allSelectedCount = useMemo(()=> Object.values(checked).filter(Boolean).length, [checked]);
 
-  // Kelompok menu dan prefix permissions yang terkait
+  // Kelompok menu dan prefix permissions yang terkait (sinkron dengan Sidebar)
   const menuGroups = [
-    { key: 'menu_master_data', label: 'Master Data', prefixes: ['view','create','edit','detail','delete','reset'] },
+    { key: 'menu_master_data', label: 'Master Data', prefixes: [] },
     { key: 'menu_hak_akses', label: 'Hak Akses', prefixes: ['manage'] },
     { key: 'menu_kas', label: 'Kas', prefixes: ['kas_masuk_','kas_keluar_','kas_flow_'] },
     { key: 'menu_produk', label: 'Produk', prefixes: ['produk_'] },
     { key: 'menu_setting', label: 'Setting', prefixes: ['rekening_','category_asset_','category_product_'] },
     { key: 'menu_asset_perusahaan', label: 'Asset Perusahaan', prefixes: ['assets_','maintenance_'] },
     { key: 'menu_ruangan', label: 'Ruangan', prefixes: ['warehouses_','racks_','rack_positions_','mutasi_'] },
+    { key: 'menu_payment', label: 'Payment', prefixes: [] },
+    { key: 'menu_chat', label: 'Chat', prefixes: [] },
+    { key: 'menu_ml', label: 'Rekomendasi', prefixes: [] },
+    { key: 'menu_presensi', label: 'Presensi', prefixes: [] },
+    { key: 'menu_user_biometrics', label: 'User Biometrics', prefixes: [] },
+    { key: 'menu_client', label: 'Client', prefixes: [] },
+    { key: 'menu_akademik', label: 'Akademik', prefixes: ['akademik.'] },
   ];
 
   const permsByCode = useMemo(() => {
@@ -154,34 +161,42 @@ export default function HasPermissionsPage() {
                 </button>
               </div>
 
-              {/* Kelompok berdasarkan Menu */}
-              <div className="space-y-6">
+              {/* Kelompok berdasarkan Menu dengan collapse & badge jumlah */}
+              <div className="space-y-4">
                 {menuGroups.map(group => {
                   const menuPerm = perms.find(p => p.code === group.key);
                   const related = getGroupPerms(group.prefixes);
+                  const [open, setOpen] = [true, () => {}]; // static open; dapat diubah ke state lokal jika perlu
                   return (
-                    <div key={group.key}>
-                      <div className="flex items-center justify-between mb-2">
-                        <h3 className="text-black font-medium">{group.label}</h3>
-                        {menuPerm && (
-                          <label className="flex items-center gap-2 px-2 py-1 rounded-lg border border-gray-200 bg-white text-black text-sm">
-                            <input type="checkbox" checked={!!checked[menuPerm.id]} onChange={()=>toggle(menuPerm.id)} />
-                            <span>Akses Menu</span>
-                          </label>
-                        )}
+                    <div key={group.key} className="rounded-xl border border-gray-200 bg-white/80">
+                      <div className="flex items-center justify-between px-3 py-2">
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-black font-medium">{group.label}</h3>
+                          <span className="px-2 py-0.5 text-xs rounded-full bg-indigo-100 text-indigo-700 border border-indigo-200">{related.length}</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          {menuPerm && (
+                            <label className="flex items-center gap-2 px-2 py-1 rounded-lg border border-gray-200 bg-white text-black text-xs">
+                              <input type="checkbox" checked={!!checked[menuPerm.id]} onChange={()=>toggle(menuPerm.id)} />
+                              <span>Akses Menu</span>
+                            </label>
+                          )}
+                        </div>
                       </div>
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                        {related.map(p => (
-                          <label key={p.id} className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 bg-white text-black shadow-sm hover:border-indigo-300">
-                            <input type="checkbox" checked={!!checked[p.id]} onChange={()=>toggle(p.id)} />
-                            <span className="text-sm font-medium">{p.name || p.code}</span>
-                            <span className="text-xs text-black/60">{p.description || (p.code !== (p.name||'') ? p.code : '')}</span>
-                          </label>
-                        ))}
-                        {related.length === 0 && (
-                          <div className="text-sm text-black/70">Tidak ada permissions di grup ini.</div>
-                        )}
-                      </div>
+                      {open && (
+                        <div className="px-3 pb-3 grid grid-cols-2 md:grid-cols-3 gap-3">
+                          {related.map(p => (
+                            <label key={p.id} className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 bg-white text-black shadow-sm hover:border-indigo-300">
+                              <input type="checkbox" checked={!!checked[p.id]} onChange={()=>toggle(p.id)} />
+                              <span className="text-sm font-medium">{p.name || p.code}</span>
+                              <span className="text-xs text-black/60">{p.description || (p.code !== (p.name||'') ? p.code : '')}</span>
+                            </label>
+                          ))}
+                          {related.length === 0 && (
+                            <div className="text-sm text-black/70">Tidak ada permissions di grup ini.</div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}

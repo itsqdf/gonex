@@ -24,6 +24,8 @@ export default function Sidebar() {
   const [openPayment, setOpenPayment] = useState(true);
   const [openChat, setOpenChat] = useState(true);
   const [openML, setOpenML] = useState(true);
+  const [openAkademik, setOpenAkademik] = useState(true);
+  const [openAnnouncement, setOpenAnnouncement] = useState(true);
   const [profile, setProfile] = useState<any>(null);
   const pathname = usePathname();
   const router = useRouter();
@@ -55,6 +57,7 @@ export default function Sidebar() {
   // user ke login jika tidak ada sesi yang valid.
 
   const isActive = (href: string) => pathname.startsWith(href);
+  const isActiveExact = (href: string) => pathname === href;
 
   const group = (
     title: string,
@@ -70,8 +73,8 @@ export default function Sidebar() {
       {collapsed ? null : (
         <div className="mt-1 space-y-1">
           {items.map(it => (
-            <Link key={it.href} href={it.href} className={`flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-white/10 ${isActive(it.href) ? 'bg-white/15 text-white font-semibold' : ''}`} onClick={() => setOpen(false)}>
-              <span className={`inline-block w-2 h-2 rounded-full ${isActive(it.href) ? 'bg-white' : 'bg-white/60'}`}></span>
+            <Link key={it.href} href={it.href} className={`flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-white/10 ${isActiveExact(it.href) ? 'bg-white/15 text-white font-semibold' : ''}`} onClick={() => setOpen(false)}>
+              <span className={`inline-block w-2 h-2 rounded-full ${isActiveExact(it.href) ? 'bg-white' : 'bg-white/60'}`}></span>
               <span>{it.label}</span>
             </Link>
           ))}
@@ -92,6 +95,8 @@ export default function Sidebar() {
   const canShowChat = perms.includes('menu_chat') || perms.includes('manage');
   const canShowML = perms.includes('menu_ml') || perms.includes('manage');
   const canShowClient = perms.includes('menu_client') || perms.includes('manage');
+  const canShowAkademik = perms.includes('menu_akademik') || perms.includes('manage');
+  const canShowAnnouncement = perms.includes('menu_pengumuman') || perms.includes('manage');
   const canShowUserBiometrics = perms.includes('menu_user_biometrics') || perms.includes('manage');
 
   const handleLogout = () => {
@@ -140,6 +145,7 @@ export default function Sidebar() {
                   { href: '/dashboard/admin/companies', label: 'Companies' },
                   { href: '/dashboard/admin/jabatan', label: 'Jabatan' },
                   ...(canShowClient ? [{ href: '/dashboard/admin/clients', label: 'Clients' }] : []),
+                  { href: '/dashboard/admin/vendors', label: 'Vendors/Suppliers' },
                 ], openMaster, () => setOpenMaster(o=>!o))}
               {canShowAccess && group('Hak Akses', [
                   { href: '/dashboard/admin/roles', label: 'Roles' },
@@ -166,6 +172,7 @@ export default function Sidebar() {
                   { href: '/dashboard/admin/setting/rekening', label: 'Rekening' },
                   { href: '/dashboard/admin/setting/category-asset', label: 'Category Asset' },
                   { href: '/dashboard/admin/setting/category-produk', label: 'Category Produk' },
+                  { href: '/dashboard/admin/setting/finance', label: 'Diskon & PPN' },
                 ], openSetting, () => setOpenSetting(o=>!o))}
               {canShowAsset && group('Asset Perusahaan', [
                   { href: '/dashboard/admin/assets', label: 'Assets' },
@@ -179,8 +186,19 @@ export default function Sidebar() {
                   { href: '/dashboard/admin/presensi/analytics', label: 'Analytics' },
                   ...(canShowUserBiometrics ? [{ href: '/dashboard/admin/presensi/user-biometrics', label: 'User Biometrics' }] : []),
                 ], openPresensi, () => setOpenPresensi(o=>!o))}
+              {canShowAkademik && group('Akademik', [
+                  { href: '/dashboard/admin/akademik/jenjang', label: 'Jenjang' },
+                  { href: '/dashboard/admin/akademik/kelas', label: 'Kelas' },
+                  { href: '/dashboard/admin/akademik/siswa', label: 'Data Siswa' },
+                  { href: '/dashboard/admin/akademik/time', label: 'Time' },
+                  { href: '/dashboard/admin/akademik/tahun', label: 'Tahun Pelajaran' },
+                  { href: '/dashboard/admin/akademik/mapel', label: 'Mata Pelajaran' },
+                  { href: '/dashboard/admin/akademik/guru', label: 'Data Guru' },
+                  { href: '/dashboard/admin/akademik/jadwal', label: 'Build Jadwal' },
+                ], openAkademik, () => setOpenAkademik(o=>!o))}
               {canShowPayment && group('Payment', [
                   { href: '/dashboard/admin/payment', label: 'Transaksi' },
+                  { href: '/dashboard/admin/payment/sales', label: 'Penjualan' },
                 ], openPayment, () => setOpenPayment(o=>!o))}
               {canShowChat && group('Chat', [
                   { href: '/dashboard/admin/chat', label: 'Obrolan' },
@@ -188,6 +206,9 @@ export default function Sidebar() {
               {canShowML && group('Rekomendasi', [
                   { href: '/dashboard/admin/recommendations', label: 'ML Recommendations' },
                 ], openML, () => setOpenML(o=>!o))}
+              {canShowAnnouncement && group('Pengumuman', [
+                  { href: '/dashboard/admin/pengumuman', label: 'Pengumuman' },
+                ], openAnnouncement, () => setOpenAnnouncement(o=>!o))}
               {perms.includes('manage') && (
                 <S.Item href="/dashboard/admin/history-penghapusan" onClick={() => setOpen(false)} className={isActive('/dashboard/admin/history-penghapusan') ? 'font-semibold' : ''}>History Penghapusan</S.Item>
               )}
@@ -221,6 +242,7 @@ export default function Sidebar() {
                 { href: '/dashboard/admin/companies', label: 'Companies' },
                 { href: '/dashboard/admin/jabatan', label: 'Jabatan' },
                 ...(canShowClient ? [{ href: '/dashboard/admin/clients', label: 'Clients' }] : []),
+                { href: '/dashboard/admin/vendors', label: 'Vendors/Suppliers' },
               ], openMaster, () => setOpenMaster(o=>!o))}
 
               {canShowAccess && group('Hak Akses', [
@@ -252,6 +274,7 @@ export default function Sidebar() {
                 { href: '/dashboard/admin/setting/rekening', label: 'Rekening' },
                 { href: '/dashboard/admin/setting/category-asset', label: 'Category Asset' },
                 { href: '/dashboard/admin/setting/category-produk', label: 'Category Produk' },
+                { href: '/dashboard/admin/setting/finance', label: 'Diskon & PPN' },
               ], openSetting, () => setOpenSetting(o=>!o))}
 
               {canShowAsset && group('Asset Perusahaan', [
@@ -268,8 +291,20 @@ export default function Sidebar() {
                 ...(canShowUserBiometrics ? [{ href: '/dashboard/admin/presensi/user-biometrics', label: 'User Biometrics' }] : []),
               ], openPresensi, () => setOpenPresensi(o=>!o))}
 
+              {canShowAkademik && group('Akademik', [
+                { href: '/dashboard/admin/akademik/jenjang', label: 'Jenjang' },
+                { href: '/dashboard/admin/akademik/kelas', label: 'Kelas' },
+                { href: '/dashboard/admin/akademik/siswa', label: 'Data Siswa' },
+                { href: '/dashboard/admin/akademik/time', label: 'Time' },
+                { href: '/dashboard/admin/akademik/tahun', label: 'Tahun Pelajaran' },
+                { href: '/dashboard/admin/akademik/mapel', label: 'Mata Pelajaran' },
+                { href: '/dashboard/admin/akademik/guru', label: 'Data Guru' },
+                { href: '/dashboard/admin/akademik/jadwal', label: 'Build Jadwal' },
+              ], openAkademik, () => setOpenAkademik(o=>!o))}
+
               {canShowPayment && group('Payment', [
                 { href: '/dashboard/admin/payment', label: 'Transaksi' },
+                { href: '/dashboard/admin/payment/sales', label: 'Penjualan' },
               ], openPayment, () => setOpenPayment(o=>!o))}
 
               {canShowChat && group('Chat', [
@@ -279,6 +314,9 @@ export default function Sidebar() {
               {canShowML && group('Rekomendasi', [
                 { href: '/dashboard/admin/recommendations', label: 'ML Recommendations' },
               ], openML, () => setOpenML(o=>!o))}
+              {canShowAnnouncement && group('Pengumuman', [
+                { href: '/dashboard/admin/pengumuman', label: 'Pengumuman' },
+              ], openAnnouncement, () => setOpenAnnouncement(o=>!o))}
 
               {perms.includes('manage') && (
                 <Link href="/dashboard/admin/history-penghapusan" onClick={() => setOpen(false)} className={`block px-4 py-2 rounded-lg hover:bg-white/10 ${isActive('/dashboard/admin/history-penghapusan') ? 'bg-white/15 text-white font-semibold' : ''}`}>History Penghapusan</Link>

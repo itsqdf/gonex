@@ -127,12 +127,31 @@ func waitForDB() {
                 active BOOLEAN NOT NULL DEFAULT TRUE,
                 created_at TIMESTAMP NOT NULL DEFAULT NOW()
             );
+            -- Pastikan ada constraint unik pada user_id agar ON CONFLICT (user_id) bekerja
+            DO $$
+            BEGIN
+              IF NOT EXISTS (
+                SELECT 1 FROM pg_indexes WHERE indexname = 'uniq_user_biometrics_user_id'
+              ) THEN
+                CREATE UNIQUE INDEX uniq_user_biometrics_user_id ON user_biometrics(user_id);
+              END IF;
+            END
+            $$;
             INSERT INTO roles(name) VALUES ('admin') ON CONFLICT DO NOTHING;
             INSERT INTO roles(name) VALUES ('user') ON CONFLICT DO NOTHING;
             INSERT INTO roles(name) VALUES ('Pengguna') ON CONFLICT DO NOTHING;
             INSERT INTO roles(name) VALUES ('superadmin') ON CONFLICT DO NOTHING;
             INSERT INTO users(username, password, role) VALUES ('admin', 'admin123', 'admin') ON CONFLICT DO NOTHING;
             INSERT INTO users(username, password, role) VALUES ('superadmin@gmail.com', 'admin123', 'superadmin') ON CONFLICT DO NOTHING;
+
+            -- Master data: schools untuk lokasi sekolah
+            CREATE TABLE IF NOT EXISTS schools (
+                id INTEGER PRIMARY KEY,
+                name TEXT,
+                latitude DOUBLE PRECISION,
+                longitude DOUBLE PRECISION,
+                updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+            );
         `)
         if err != nil {
             log.Println("db schema error:", err)
@@ -148,7 +167,7 @@ func waitForDB() {
 
 func seedPermissions() {
     // Tambahkan menu sesuai kebutuhan Sidebar dan operation generic
-    menuCodes := []string{"menu_master_data","menu_hak_akses","menu_kas","menu_produk","menu_setting","menu_asset_perusahaan","menu_ruangan","menu_payment","menu_chat","menu_ml","menu_presensi","menu_user_biometrics","menu_client"}
+    menuCodes := []string{"menu_master_data","menu_hak_akses","menu_kas","menu_produk","menu_setting","menu_asset_perusahaan","menu_ruangan","menu_payment","menu_chat","menu_ml","menu_presensi","menu_user_biometrics","menu_client","menu_akademik"}
     op := []string{"view","create","edit","detail","reset","print","delete","manage"}
     prefixes := []string{"produk_","kas_masuk_","kas_keluar_","kas_flow_","rekening_","category_asset_","category_product_","assets_","maintenance_","warehouses_","racks_","rack_positions_","mutasi_"}
     for _, c := range menuCodes {
@@ -162,6 +181,15 @@ func seedPermissions() {
             code := p + o
             name := strings.Title(strings.ReplaceAll(p, "_", " ")) + " " + strings.Title(o)
             _, _ = db.Exec("INSERT INTO permissions(code,name,description) VALUES($1,$2,$3) ON CONFLICT(code) DO NOTHING", code, name, "Scoped operation")
+        }
+    }
+    // Akademik dot-based permissions for teacher-service
+    akademikEntities := []string{"jenjang","kelas","time","tahun","mapel","guru","jadwal"}
+    for _, ent := range akademikEntities {
+        for _, o := range []string{"read","create","update","delete","build"} {
+            code := "akademik." + ent + "." + o
+            name := "Akademik " + strings.Title(ent) + " " + strings.Title(o)
+            _, _ = db.Exec("INSERT INTO permissions(code,name,description) VALUES($1,$2,$3) ON CONFLICT(code) DO NOTHING", code, name, "Teacher-service scoped operation")
         }
     }
     // Beri semua permission ke superadmin
@@ -183,7 +211,7 @@ func seedPermissions() {
     var adminID int
     _ = db.QueryRow("SELECT id FROM roles WHERE name='admin'").Scan(&adminID)
     if adminID != 0 {
-        baseCodes := []string{"manage","menu_master_data","menu_hak_akses","menu_kas","menu_produk","menu_setting","menu_asset_perusahaan","menu_ruangan","menu_payment","menu_chat","menu_ml","menu_presensi","menu_user_biometrics","menu_client"}
+        baseCodes := []string{"manage","menu_master_data","menu_hak_akses","menu_kas","menu_produk","menu_setting","menu_asset_perusahaan","menu_ruangan","menu_payment","menu_chat","menu_ml","menu_presensi","menu_user_biometrics","menu_client","menu_akademik"}
         for _, code := range baseCodes {
             var pid int
             if err := db.QueryRow("SELECT id FROM permissions WHERE code=$1", code).Scan(&pid); err == nil && pid != 0 {
@@ -221,7 +249,7 @@ func seedPermissions() {
     }
 }
 
-func listPermissions(w http.ResponseWriter, r *http.Request) {
+func listPermissions(w http.ResponseWriter, _ *http.Request) {
     if !dbReady { writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error":"db_unavailable"}); return }
     rows, err := db.Query("SELECT id, code, name, COALESCE(description,'') FROM permissions ORDER BY code")
     if err != nil { writeJSON(w, 500, map[string]string{"error":err.Error()}); return }
@@ -473,7 +501,7 @@ func resetPassword(w http.ResponseWriter, r *http.Request) {
     writeJSON(w, 200, map[string]string{"status":"ok", "default": def})
 }
 
-func listRoles(w http.ResponseWriter, r *http.Request) {
+func listRoles(w http.ResponseWriter, _ *http.Request) {
     if !dbReady { writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error":"db_unavailable"}); return }
     rows, err := db.Query("SELECT id, name FROM roles ORDER BY id")
     if err != nil { writeJSON(w, 500, map[string]string{"error":err.Error()}); return }
@@ -743,7 +771,13 @@ func createOrUpdateUserBiometrics(w http.ResponseWriter, r *http.Request) {
     err := db.QueryRow(`
         INSERT INTO user_biometrics(user_id, face_vector, fingerprint_hash, qr_code, face_image_url, active)
         VALUES ($1,$2,$3,$4,$5,$6)
-        ON CONFLICT (user_id) DO UPDATE SET face_vector=EXCLUDED.face_vector, fingerprint_hash=EXCLUDED.fingerprint_hash, qr_code=EXCLUDED.qr_code, face_image_url=EXCLUDED.face_image_url, active=EXCLUDED.active
+        ON CONFLICT (user_id) DO UPDATE SET
+            face_vector = EXCLUDED.face_vector,
+            fingerprint_hash = EXCLUDED.fingerprint_hash,
+            -- Jangan timpa QR jika sudah ada: pakai nilai lama bila tidak NULL
+            qr_code = COALESCE(user_biometrics.qr_code, EXCLUDED.qr_code),
+            face_image_url = EXCLUDED.face_image_url,
+            active = EXCLUDED.active
         RETURNING id
     `, in.UserID, faceVecStr, nullableString(in.FingerprintHash), nullableString(in.QRCode), nullableString(in.FaceImageURL), active).Scan(&id)
     if err != nil { writeJSON(w, 500, map[string]string{"error":err.Error()}); return }
@@ -1075,8 +1109,47 @@ func main() {
         }
     })
 
+    // Master Data: update lokasi sekolah
+    mux.HandleFunc("/api/v1/master/school/", func(w http.ResponseWriter, r *http.Request) {
+        // Hanya izinkan POST/PUT dan suffix /update-location
+        if !(r.Method == http.MethodPost || r.Method == http.MethodPut) { w.WriteHeader(http.StatusMethodNotAllowed); return }
+        if !strings.HasSuffix(r.URL.Path, "/update-location") { w.WriteHeader(http.StatusNotFound); return }
+        updateSchoolLocation(w, r)
+    })
+
     log.Println("auth-user-service-go listening on :3000")
     if err := http.ListenAndServe(":3000", mux); err != nil { log.Fatal(err) }
+}
+
+// Update lokasi sekolah: /api/v1/master/school/{id}/update-location
+// Payload: { "school_id": number (opsional), "latitude": number, "longitude": number }
+func updateSchoolLocation(w http.ResponseWriter, r *http.Request) {
+    if !dbReady { writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error":"db_unavailable"}); return }
+    // Ekstrak id dari path
+    s := strings.TrimPrefix(r.URL.Path, "/api/v1/master/school/")
+    parts := strings.Split(strings.Trim(s, "/"), "/")
+    if len(parts) < 2 || parts[1] != "update-location" { writeJSON(w, 404, map[string]string{"error":"not_found"}); return }
+    id, err := strconv.Atoi(parts[0])
+    if err != nil || id <= 0 { writeJSON(w, 400, map[string]string{"error":"invalid school id"}); return }
+
+    var payload struct {
+        SchoolID  *int     `json:"school_id"`
+        Latitude  *float64 `json:"latitude"`
+        Longitude *float64 `json:"longitude"`
+    }
+    if err := json.NewDecoder(r.Body).Decode(&payload); err != nil { writeJSON(w, 400, map[string]string{"error":"invalid json"}); return }
+    // Gunakan path id jika payload.school_id kosong
+    if payload.SchoolID == nil { payload.SchoolID = &id }
+    if payload.Latitude == nil || payload.Longitude == nil { writeJSON(w, 400, map[string]string{"error":"latitude/longitude required"}); return }
+
+    // Upsert lokasi
+    _, err = db.Exec(
+        "INSERT INTO schools(id, latitude, longitude) VALUES($1,$2,$3) "+
+            "ON CONFLICT (id) DO UPDATE SET latitude = EXCLUDED.latitude, longitude = EXCLUDED.longitude, updated_at = NOW()",
+        *payload.SchoolID, *payload.Latitude, *payload.Longitude,
+    )
+    if err != nil { writeJSON(w, 500, map[string]string{"error":err.Error()}); return }
+    writeJSON(w, 200, map[string]interface{}{"status":"updated","school_id":*payload.SchoolID,"latitude":*payload.Latitude,"longitude":*payload.Longitude})
 }
 
 func normalizeDSN(dsn string) string {

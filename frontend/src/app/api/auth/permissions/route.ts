@@ -30,6 +30,8 @@ export async function GET(req: Request) {
     "menu_payment",
     "menu_chat",
     "menu_ml",
+    "menu_akademik",
+    "menu_pengumuman",
   ];
 
   return NextResponse.json({ permissions });

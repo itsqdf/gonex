@@ -6,7 +6,8 @@ import FloatingDatepicker from "../../../../components/FloatingDatepicker";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
 
-type Asset = { id: number; name: string; code: string };
+type Asset = { id: number; name: string; code: string; need_maintenance?: boolean; category_id?: number|null };
+type Category = { id:number; nama?:string; maintenance?:boolean };
 type Item = {
   id: number;
   asset_id: number;
@@ -34,12 +35,14 @@ type Item = {
 export default function MaintenancePage() {
   const [items, setItems] = useState<Item[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
+  const [cats, setCats] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
   const [q, setQ] = useState("");
   const [showForm, setShowForm] = useState(false);
   // pagination
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
+  const [onlyNeedMaint, setOnlyNeedMaint] = useState<boolean>(false);
 
   // form
   const [asset_id, setAssetId] = useState<number | null>(null);
@@ -56,9 +59,18 @@ export default function MaintenancePage() {
   const loadAssets = async () => {
     try {
       const r = await fetch(`${API_URL}/assets`, { headers: { Authorization: `Bearer ${token}` } });
-      const d = await r.json();
-      const list = Array.isArray(d.data) ? d.data : [];
-      setAssets(list.map((it:any)=>({ id: it.id, name: it.name, code: it.code })));
+      const d = await r.json().catch(()=>({}));
+      const list = Array.isArray((d as any)?.data) ? (d as any).data : Array.isArray(d) ? (d as any) : Array.isArray((d as any)?.items) ? (d as any).items : [];
+      setAssets(list.map((it:any)=>({ id: Number(it.id), name: String(it.name), code: String(it.code), need_maintenance: !!it.need_maintenance, category_id: it.category_id ?? null })));
+    } catch (e) {}
+  };
+
+  const loadCats = async () => {
+    try {
+      const r = await fetch(`${API_URL}/category-assets`, { headers: { Authorization: `Bearer ${token}` } });
+      const d = await r.json().catch(()=>({}));
+      const list = Array.isArray((d as any)?.data) ? (d as any).data : Array.isArray(d) ? (d as any) : Array.isArray((d as any)?.items) ? (d as any).items : [];
+      setCats(list.map((it:any)=>({ id: Number(it.id), nama: String(it.nama || it.name || ''), maintenance: !!(it.maintenance ?? it.need_maintenance) })));
     } catch (e) {}
   };
 
@@ -66,8 +78,8 @@ export default function MaintenancePage() {
     setLoading(true);
     try {
       const r = await fetch(`${API_URL}/maintenance?q=${encodeURIComponent(q)}`, { headers: { Authorization: `Bearer ${token}` } });
-      const d = await r.json();
-      const list = Array.isArray(d.data) ? d.data : [];
+      const d = await r.json().catch(()=>({}));
+      const list = Array.isArray((d as any)?.data) ? (d as any).data : Array.isArray(d) ? (d as any) : Array.isArray((d as any)?.items) ? (d as any).items : [];
       setItems(list.map((it: any) => ({
         id: it.id,
         asset_id: it.asset_id,
@@ -86,7 +98,7 @@ export default function MaintenancePage() {
     setLoading(false);
   };
 
-  useEffect(() => { loadAssets(); }, []);
+  useEffect(() => { loadAssets(); loadCats(); }, []);
   useEffect(() => { loadData(); }, [q]);
 
   const total = items.length;
@@ -149,6 +161,10 @@ export default function MaintenancePage() {
               <span>{showForm ? "✖️ Tutup" : "➕ Tambah"}</span>
             </button>
             <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Cari..." className="px-3 py-2 rounded border w-64" />
+            <label className="flex items-center gap-2 text-sm text-black">
+              <input type="checkbox" checked={onlyNeedMaint} onChange={e=>setOnlyNeedMaint(e.target.checked)} />
+              <span>Hanya aset perlu maintenance</span>
+            </label>
           </div>
         </div>
 
@@ -159,7 +175,11 @@ export default function MaintenancePage() {
             <div className="relative">
               <select value={asset_id ?? ""} onChange={e=>setAssetId(e.target.value?Number(e.target.value):null)} className="px-3 py-3 rounded-lg border border-gray-300 text-sm text-black bg-white w-full">
                 <option value="">Pilih Asset</option>
-                {assets.map(a=> <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}
+                {assets.filter(a=>{
+                  if (!onlyNeedMaint) return true;
+                  const cat = cats.find(c=> c.id === (a.category_id ?? 0));
+                  return !!a.need_maintenance || !!cat?.maintenance;
+                }).map(a=> <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}
               </select>
               <label className="absolute left-3 -top-2.5 bg-white px-1 text-xs text-gray-600">Asset</label>
             </div>
@@ -242,6 +262,7 @@ export default function MaintenancePage() {
                 <thead>
                   <tr className="text-left text-black">
                     <th className="py-2">Asset</th>
+                    <th className="py-2">Tanggal</th>
                     <th className="py-2">Status</th>
                     <th className="py-2">Biaya</th>
                     <th className="py-2">Aksi</th>
@@ -257,6 +278,33 @@ export default function MaintenancePage() {
                           </select>
                         ) : (
                           it.asset_name || `#${it.asset_id}`
+                        )}
+                      </td>
+                      <td className="py-2 text-black">
+                        {it._editing ? (
+                          <div className="relative z-20">
+                            <FloatingDatepicker
+                              id={`maintenance_date_${it.id}`}
+                              label="Tanggal"
+                              value={it._maintenance_date ? new Date(it._maintenance_date) : (it.maintenance_date ? new Date(it.maintenance_date) : null)}
+                              onChange={(val: unknown) => {
+                                const toYMD = (d: Date) => {
+                                  const y = d.getFullYear();
+                                  const m = String(d.getMonth() + 1).padStart(2, '0');
+                                  const day = String(d.getDate()).padStart(2, '0');
+                                  return `${y}-${m}-${day}`;
+                                };
+                                let next = "";
+                                if (!val) next = "";
+                                else if (val instanceof Date && !isNaN(val.getTime())) next = toYMD(val);
+                                else if (typeof val === "string") { const d = new Date(val); if (!isNaN(d.getTime())) next = toYMD(d); }
+                                else if (typeof val === "number") { const d = new Date(val); if (!isNaN(d.getTime())) next = toYMD(d); }
+                                setItems(prev=>prev.map(p=>p.id===it.id?{...p, _maintenance_date: next}:p));
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          it.maintenance_date || "-"
                         )}
                       </td>
                       <td className="py-2 text-black">

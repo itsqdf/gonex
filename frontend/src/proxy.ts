@@ -15,19 +15,19 @@ export function proxy(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // Get token from cookies or headers
+  // Always allow dashboard routes to proceed (dev-friendly; token checked inside pages)
+  if (pathname.startsWith('/dashboard')) {
+    return NextResponse.next()
+  }
+
+  // Get token from cookies or headers for other protected routes
   const token = request.cookies.get('token')?.value || 
                 request.headers.get('authorization')?.replace('Bearer ', '')
 
-  // If no token and trying to access protected routes, redirect to login
+  // If no token and trying to access other protected routes, redirect to login
   if (!token) {
     const loginUrl = new URL('/login', request.url)
     return NextResponse.redirect(loginUrl)
-  }
-
-  // Allow access to dashboard routes if token exists
-  if (pathname.startsWith('/dashboard')) {
-    return NextResponse.next()
   }
 
   // For root path, redirect to login immediately

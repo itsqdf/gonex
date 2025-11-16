@@ -20,7 +20,8 @@ func corsMiddleware(next http.Handler) http.Handler {
             w.Header().Set("Access-Control-Allow-Origin", "*")
         }
         w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-        w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        // Allow custom headers used by frontend for role/permission gating
+        w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Role, X-Permissions")
         w.Header().Set("Access-Control-Allow-Credentials", "true")
         if r.Method == http.MethodOptions {
             w.WriteHeader(http.StatusNoContent)
@@ -92,12 +93,17 @@ func main() {
     // User biometrics endpoints (proxy to auth-user-service)
     r.PathPrefix("/user-biometrics").Handler(proxyTo("http://auth-user-service:3000")).Methods(http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodOptions)
 
-	// Setting service
-	r.PathPrefix("/setting").Handler(proxyTo("http://setting-service:3000")).Methods(http.MethodGet, http.MethodPost, http.MethodPut)
-	r.PathPrefix("/settings").Handler(proxyTo("http://setting-service:3000")).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch)
+    // Setting service
+    // Tambahkan DELETE dan OPTIONS agar penghapusan lokasi presensi bekerja melalui gateway
+    r.PathPrefix("/setting").Handler(proxyTo("http://setting-service:3000")).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions)
+    r.PathPrefix("/settings").Handler(proxyTo("http://setting-service:3000")).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions)
+	// Chat service (proxied to setting-service for simplicity)
+	r.PathPrefix("/chat").Handler(proxyTo("http://setting-service:3000")).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete)
 	r.PathPrefix("/companies").Handler(proxyTo("http://setting-service:3000")).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete)
 	r.PathPrefix("/jabatan").Handler(proxyTo("http://setting-service:3000")).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete)
 	r.PathPrefix("/jabatan-presensi").Handler(proxyTo("http://setting-service:3000")).Methods(http.MethodGet, http.MethodPut)
+	r.PathPrefix("/clients").Handler(proxyTo("http://setting-service:3000")).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete)
+	r.PathPrefix("/vendors").Handler(proxyTo("http://setting-service:3000")).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete)
 
 	// Produk service
 	r.PathPrefix("/produk").Handler(proxyTo("http://produk-service:3000")).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete)
@@ -136,6 +142,9 @@ func main() {
 	r.PathPrefix("/activities").Handler(proxyTo("http://client-service:3000")).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete)
 	r.PathPrefix("/check-in").Handler(proxyTo("http://client-service:3000")).Methods(http.MethodGet)
 	r.PathPrefix("/setting-presensi").Handler(proxyTo("http://client-service:3000")).Methods(http.MethodGet)
+
+	// Akademik teacher-service
+	r.PathPrefix("/akademik").Handler(proxyTo("http://teacher-service:3000")).Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete)
 
 	// Delete service
 	r.PathPrefix("/deletion-logs").Handler(proxyTo("http://delete-service:3000")).Methods(http.MethodGet, http.MethodPost, http.MethodDelete)

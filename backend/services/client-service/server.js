@@ -65,15 +65,26 @@ app.get('/check-in', async (req, res) => { const now = new Date(); await pool.qu
 app.post('/presensi/check-in', async (req, res) => {
   try {
     const { user_id, method, latitude, longitude, notes } = req.body || {};
-    const uid = Number(user_id || 0);
+    let uid = Number(user_id || 0);
     const lat = Number(latitude), lng = Number(longitude);
     const mth = String(method || '').toLowerCase();
+    // Fallback: ambil user dari token jika user_id tidak dikirim
+    const authUrl = process.env.AUTH_URL || 'http://auth-user-service-go:3000';
+    if (!uid) {
+      const ah = req.headers['authorization'] || '';
+      if (ah) {
+        try {
+          const meRes = await fetch(`${authUrl}/auth/me`, { headers: { Authorization: ah } });
+          const me = await meRes.json();
+          if (meRes.ok && (me?.id || me?.user_id)) uid = Number(me.id || me.user_id);
+        } catch {}
+      }
+    }
     if (!uid || !isFinite(lat) || !isFinite(lng) || !['face','qr','fingerprint'].includes(mth)) {
       return res.status(400).json({ error: 'user_id, latitude, longitude, and method (face|qr|fingerprint) required' });
     }
 
     // Fetch user to get jabatan name
-    const authUrl = process.env.AUTH_URL || 'http://auth-user-service-go:3000';
     const setUrl = process.env.SETTING_URL || 'http://setting-service:3000';
     const ures = await fetch(`${authUrl}/users/${uid}`);
     const ujson = await ures.json();
@@ -138,6 +149,116 @@ app.post('/presensi/check-in', async (req, res) => {
       [uid, locStr, now, 'check_in', notes || null, lateMin, null]
     );
     res.status(201).json({ ok: true, id: rows[0].id, late_minutes: lateMin, method: mth });
+  } catch (e) {
+    res.status(500).json({ error: e.message || 'internal error' });
+  }
+});
+
+// New: verify and record check-out
+app.post('/presensi/check-out', async (req, res) => {
+  try {
+    const { user_id, latitude, longitude, notes } = req.body || {};
+    let uid = Number(user_id || 0);
+    const lat = Number(latitude), lng = Number(longitude);
+    const authUrl = process.env.AUTH_URL || 'http://auth-user-service-go:3000';
+    const setUrl = process.env.SETTING_URL || 'http://setting-service:3000';
+    if (!uid) {
+      const ah = req.headers['authorization'] || '';
+      if (ah) {
+        try {
+          const meRes = await fetch(`${authUrl}/auth/me`, { headers: { Authorization: ah } });
+          const me = await meRes.json();
+          if (meRes.ok && (me?.id || me?.user_id)) uid = Number(me.id || me.user_id);
+        } catch {}
+      }
+    }
+    if (!uid || !isFinite(lat) || !isFinite(lng)) {
+      return res.status(400).json({ error: 'user_id, latitude and longitude required' });
+    }
+
+    // Fetch user and method by jabatan
+    const ures = await fetch(`${authUrl}/users/${uid}`);
+    const ujson = await ures.json();
+    if (!ures.ok) return res.status(404).json({ error: 'user_not_found' });
+    const jabatanName = (ujson && ujson.user && ujson.user.jabatan) || '';
+    const jres = await fetch(`${setUrl}/jabatan`);
+    const jlist = await jres.json();
+    const jmap = new Map();
+    (Array.isArray(jlist) ? jlist : []).forEach(it => { if (it && it.name) jmap.set(String(it.name), Number(it.id)); });
+    const jid = jmap.get(jabatanName) || 0;
+    const jmres = await fetch(`${setUrl}/jabatan-presensi`);
+    const jmlist = await jmres.json();
+    const jm = Array.isArray(jmlist) ? jmlist.find(it => Number(it.jabatan_id) === Number(jid)) : null;
+    const mth = jm ? String(jm.method) : null;
+    if (!mth) return res.status(403).json({ error: 'method_not_configured_for_jabatan' });
+
+    // Allowed locations
+    const companyId = Number(req.query.company_id || 1);
+    const locRes = await fetch(`${setUrl}/settings/locations?company_id=${companyId}`);
+    const locJson = await locRes.json();
+    const locations = (locJson && locJson.items) || [];
+    const haversine = (lat1, lon1, lat2, lon2) => {
+      const toRad = deg => deg * Math.PI / 180;
+      const R = 6371000; // meters
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    };
+    const inside = locations.find(l => l.active && haversine(lat, lng, Number(l.latitude), Number(l.longitude)) <= Number(l.radius_m || 50));
+    if (!inside) return res.status(403).json({ error: 'location_not_allowed' });
+
+    // Ensure biometrics exists and active for method
+    const bres = await fetch(`${authUrl}/user-biometrics?user_id=${uid}`);
+    const blist = await bres.json();
+    const b = Array.isArray(blist) && blist.length ? blist[0] : null;
+    if (!b || !b.active) return res.status(404).json({ error: 'biometrics_not_found_or_inactive' });
+    if (mth === 'face' && !b.face_vector) return res.status(404).json({ error: 'face_vector_missing' });
+    if (mth === 'qr' && !b.qr_code) return res.status(404).json({ error: 'qr_code_missing' });
+    if (mth === 'fingerprint' && !b.fingerprint_hash) return res.status(404).json({ error: 'fingerprint_hash_missing' });
+
+    // Compute early departure
+    const csRes = await fetch(`${setUrl}/settings/company/${companyId}`);
+    const cs = await csRes.json();
+    const now = new Date();
+    const parseHM = (s) => { if (!s) return null; const [h,m] = String(s).split(':').map(n=>parseInt(n,10)); if (isNaN(h)||isNaN(m)) return null; const d = new Date(now); d.setHours(h, m, 0, 0); return d; };
+    const targetOut = parseHM(cs.default_check_out);
+    let earlyMin = 0;
+    if (targetOut && now < targetOut) earlyMin = Math.round((targetOut.getTime() - now.getTime())/60000);
+
+    // Record check-out
+    const locStr = JSON.stringify({ latitude: lat, longitude: lng, location_id: inside.id });
+    const { rows } = await pool.query(
+      'INSERT INTO checkins(user_id, location, ts, status, notes, late_minutes, early_departure_minutes) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id',
+      [uid, locStr, now, 'check_out', notes || null, null, earlyMin]
+    );
+    res.status(201).json({ ok: true, id: rows[0].id, early_departure_minutes: earlyMin, method: mth });
+  } catch (e) {
+    res.status(500).json({ error: e.message || 'internal error' });
+  }
+});
+
+// Status hari ini untuk user dari token
+app.get('/presensi/me/today', async (req, res) => {
+  try {
+    const authUrl = process.env.AUTH_URL || 'http://auth-user-service-go:3000';
+    const ah = req.headers['authorization'] || '';
+    if (!ah) return res.status(401).json({ error: 'unauthorized' });
+    const meRes = await fetch(`${authUrl}/auth/me`, { headers: { Authorization: ah } });
+    const me = await meRes.json();
+    if (!meRes.ok || !(me?.id || me?.user_id)) return res.status(401).json({ error: 'unauthorized' });
+    const uid = Number(me.id || me.user_id);
+
+    const start = new Date(); start.setHours(0,0,0,0);
+    const end = new Date(); end.setHours(23,59,59,999);
+    const { rows } = await pool.query(
+      'SELECT ts, status FROM checkins WHERE user_id=$1 AND ts BETWEEN $2 AND $3 ORDER BY ts ASC',
+      [uid, start, end]
+    );
+    const ci = rows.find(r => r.status === 'check_in');
+    const co = [...rows].reverse().find(r => r.status === 'check_out');
+    res.json({ date: start.toISOString().slice(0,10), check_in: ci ? ci.ts.toISOString() : null, check_out: co ? co.ts.toISOString() : null });
   } catch (e) {
     res.status(500).json({ error: e.message || 'internal error' });
   }
