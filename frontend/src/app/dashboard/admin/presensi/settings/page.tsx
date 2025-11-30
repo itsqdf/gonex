@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MapContainer, TileLayer, Marker, Circle, Popup, useMapEvents } from "react-leaflet";
-import L from "leaflet";
+import dynamic from "next/dynamic";
 import "leaflet/dist/leaflet.css";
 import { Button, Modal, ModalHeader, ModalBody, ModalFooter, Label, TextInput, Alert } from "flowbite-react";
 import Swal from "sweetalert2";
 import { authHeaders } from "@/lib/helpers";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+
 
 type Settings = {
   id?: number;
@@ -64,13 +64,16 @@ export default function PresensiSettingsPage() {
 
   // Setup default icon untuk Leaflet agar marker tampil benar
   useEffect(() => {
-    try {
-      L.Icon.Default.mergeOptions({
-        iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-        iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-        shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-      });
-    } catch {}
+    (async () => {
+      try {
+        const L = await import("leaflet");
+        L.Icon.Default.mergeOptions({
+          iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+          iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+          shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+        });
+      } catch {}
+    })();
   }, []);
 
   const load = async () => {
@@ -306,17 +309,11 @@ export default function PresensiSettingsPage() {
     setDraftLocations(prev => prev.filter(l => l.tempId !== tempId));
   };
 
-  // Komponen kecil untuk menangkap klik peta dan mengembalikan koordinat
-  function MapClickSetter({ onClick }: { onClick: (lat: number, lng: number) => void }) {
-    useMapEvents({
-      click(e: L.LeafletMouseEvent) {
-        const lat = e.latlng?.lat;
-        const lng = e.latlng?.lng;
-        if (typeof lat === 'number' && typeof lng === 'number') onClick(lat, lng);
-      }
-    });
-    return null as any;
-  }
+  const MapContainer = dynamic(() => import("react-leaflet").then(m => m.MapContainer), { ssr: false });
+  const TileLayer = dynamic(() => import("react-leaflet").then(m => m.TileLayer), { ssr: false });
+  const Marker = dynamic(() => import("react-leaflet").then(m => m.Marker), { ssr: false });
+  const Circle = dynamic(() => import("react-leaflet").then(m => m.Circle), { ssr: false });
+  const Popup = dynamic(() => import("react-leaflet").then(m => m.Popup), { ssr: false });
 
   // Tidak ada integrasi Google Maps lagi; marker draggable diatur di komponen Leaflet
 
@@ -407,13 +404,12 @@ export default function PresensiSettingsPage() {
                     {mapsEnabled && (
                       <>
                         <div className="rounded border bg-white/70 overflow-hidden mt-2">
-                          <MapContainer center={selectedCoords ? [selectedCoords.lat, selectedCoords.lng] : [mapCenter.lat, mapCenter.lng]} zoom={mapZoom} style={{ width: "100%,", height: "300px" }}>
+                          <MapContainer
+                            center={selectedCoords ? [selectedCoords.lat, selectedCoords.lng] : [mapCenter.lat, mapCenter.lng]}
+                            zoom={mapZoom}
+                            style={{ width: "100%,", height: "300px" }}
+                          >
                             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                            {/* Tangkap click pada peta untuk set koordinat */}
-                            <MapClickSetter onClick={(lat:number, lng:number) => {
-                              setSelectedCoords({ lat, lng });
-                              setLocForm(s=>({ ...s, latitude: String(lat), longitude: String(lng) }));
-                            }} />
                             {selectedCoords && (
                               <>
                                 <Marker position={[selectedCoords.lat, selectedCoords.lng] as any} draggable eventHandlers={{

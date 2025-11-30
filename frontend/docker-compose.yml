@@ -1,0 +1,13 @@
+services:
+  web:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://gateway:8080
+    networks:
+      - gonex-net
+
+networks:
+  gonex-net:
+    external: true

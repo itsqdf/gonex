@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
-export default function EnrollFingerprintPage() {
+
+function EnrollContent() {
   const sp = useSearchParams();
   const userIdStr = sp.get("user_id") || "";
   const userId = useMemo(()=> parseInt(userIdStr || "0", 10), [userIdStr]);
@@ -61,5 +62,13 @@ export default function EnrollFingerprintPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function EnrollFingerprintPage() {
+  return (
+    <Suspense fallback={<div className="p-6">Memuat…</div>}>
+      <EnrollContent />
+    </Suspense>
   );
 }
